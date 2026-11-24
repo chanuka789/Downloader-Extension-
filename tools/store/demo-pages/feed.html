@@ -1,0 +1,24 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Feed</title>
+<style>
+*{box-sizing:border-box} body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#fafafa;color:#111}
+.wrap{display:flex;gap:40px;justify-content:center;padding:24px} .col{width:470px}
+article{background:#fff;border:1px solid #e6e6e6;border-radius:10px;margin-bottom:22px;overflow:hidden}
+article header{display:flex;align-items:center;gap:10px;padding:12px 14px;font-weight:600;font-size:14px}
+.av{width:34px;height:34px;border-radius:50%;display:inline-block}
+.media{width:470px;height:470px;position:relative;overflow:hidden;background:#000} .media img,.media video{width:470px;height:470px;object-fit:cover;display:block}
+.cover{position:absolute;inset:0} ul{list-style:none;margin:0;padding:0;position:relative;height:470px} li{position:absolute;top:0;left:0;width:470px;height:470px}
+.dots{position:absolute;bottom:12px;left:0;right:0;text-align:center} .dots i{display:inline-block;width:6px;height:6px;border-radius:50%;background:#fff;opacity:.5;margin:0 2px} .dots i:first-child{opacity:1}
+.acts{padding:10px 14px 4px;font-size:22px;letter-spacing:10px} .cap{padding:0 14px 14px;font-size:14px} .cap b{margin-right:6px} time{display:block;color:#888;font-size:12px;margin-top:6px}
+aside{width:420px} aside h3{font-size:15px;margin:6px 0 12px} .grid{display:grid;grid-template-columns:repeat(3,136px);gap:6px} .grid a{display:block;width:136px;height:136px} .grid img{width:136px;height:136px;object-fit:cover;display:block;border-radius:4px}
+</style></head><body><div class="wrap"><section class="col">
+<article><header><span class="av" style="background:linear-gradient(135deg,#f59e0b,#ef4444)"></span>lena.outdoors</header><div class="media"><img src="/alpine-lake-4k.jpg"><div class="cover"></div></div>
+ <div class="acts">♡ ◯ ➤</div><div class="cap"><b>lena.outdoors</b>Sunrise over the lake 🏔️<a href="/p/DkAlpine1/"><time>2 hours ago</time></a></div></article>
+<article><header><span class="av" style="background:linear-gradient(135deg,#6366f1,#22d3ee)"></span>travel.with.sam</header><div class="media"><ul id="car">
+ <li style="transform:translateX(0px)"><img src="/desert-dunes.jpg"></li><li style="transform:translateX(470px)"><img src="/canyon-gold.jpg"></li>
+ <li style="transform:translateX(940px)"><video src="/mountain-flight.mp4" poster="/coast-sunset.jpg" muted></video></li><li style="transform:translateX(1410px)"><img src="/lavender-hills.jpg"></li>
+</ul><div class="dots"><i></i><i></i><i></i><i></i></div><div class="cover"></div></div>
+ <div class="acts">♡ ◯ ➤</div><div class="cap"><b>travel.with.sam</b>4 days in the desert ☀️<a href="/p/DkCarous2/"><time>5 hours ago</time></a></div></article>
+<article><header><span class="av" style="background:linear-gradient(135deg,#0ea5e9,#1e3a8a)"></span>nightsky.club</header><div class="media"><video src="/mountain-flight.mp4" poster="/northern-night.jpg" muted></video><div class="cover"></div></div>
+ <div class="acts">♡ ◯ ➤</div><div class="cap"><b>nightsky.club</b>Night flight<a href="/reel/DkReelNt3/"><time>1 day ago</time></a></div></article>
+</section><aside><h3>Explore</h3><div class="grid"><a href="/p/DkTile001/"><img src="/forest-morning.jpg"></a><a href="/p/DkTile002/"><img src="/glacier-blue.jpg"></a><a href="/p/DkTile003/"><img src="/misty-peaks.jpg"></a><a href="/p/DkTile004/"><img src="/tropical-dawn.jpg"></a><a href="/p/DkTile005/"><img src="/lavender-hills.jpg"></a><a href="/p/DkTile006/"><img src="/canyon-gold.jpg"></a></div></aside></div>
+<script>setTimeout(()=>fetch('/feed-api.json').then(r=>r.json()),150);</script></body></html>

@@ -2,7 +2,7 @@
 everything else, so tests never touch the real website."""
 import socket, threading, sys
 LISTEN = int(sys.argv[1]); TARGET = ('127.0.0.1', int(sys.argv[2]))
-ALLOWED = {'www.instagram.com'}
+ALLOWED = {'www.instagram.com'} | set(filter(None, (sys.argv[3] if len(sys.argv) > 3 else '').split(',')))
 
 def pipe(a, b):
     try:
