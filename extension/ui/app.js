@@ -6,7 +6,7 @@
 
   const MODE = document.body.classList.contains('manager') ? 'manager' : 'popup';
   const params = new URLSearchParams(location.search);
-  const DEFAULTS = { folder: 'MediaHarbor', bySite: true, askWhere: false, theme: 'system', minSize: 0, hideSmall: true, view: 'grid', cover: false };
+  const DEFAULTS = { folder: 'MediaHarbor', bySite: true, askWhere: false, theme: 'system', minSize: 0, hideSmall: true, view: 'grid', cover: false, igButtons: true };
   const BLOCKED_VIDEO = /(^|\.)(youtube\.com|youtu\.be|youtube-nocookie\.com|netflix\.com|disneyplus\.com|primevideo\.com|hulu\.com|max\.com|hbomax\.com|spotify\.com)$/i;
 
   // ------------------------------------------------------------------ icons
@@ -257,6 +257,7 @@
             <div class="switch-row"><div class="txt"><strong>Sort into folders by website</strong><span>Example: MediaHarbor/instagram.com/photo.jpg</span></div><input type="checkbox" class="switch" id="sBySite"></div>
             <div class="switch-row"><div class="txt"><strong>Ask where to save</strong><span>Only for single downloads</span></div><input type="checkbox" class="switch" id="sAsk"></div>
             <div class="switch-row"><div class="txt"><strong>Hide icons and tiny images</strong><span>Hides images smaller than 120 px</span></div><input type="checkbox" class="switch" id="sHideSmall"></div>
+            <div class="switch-row"><div class="txt"><strong>Download buttons on Instagram</strong><span>On every post, reel, story and grid photo</span></div><input type="checkbox" class="switch" id="sIg"></div>
             <div class="switch-row"><div class="txt"><strong>Crop thumbnails to fill</strong><span>Off shows the whole picture</span></div><input type="checkbox" class="switch" id="sCover"></div>
             <div class="field">
               <span class="lbl">Theme</span>
@@ -802,6 +803,7 @@
     $('#sAsk').checked = !!s.askWhere;
     $('#sHideSmall').checked = !!s.hideSmall;
     $('#sCover').checked = !!s.cover;
+    $('#sIg').checked = s.igButtons !== false;
     for (const b of document.querySelectorAll('#sTheme button')) b.setAttribute('aria-pressed', String(b.dataset.v === s.theme));
     els.settings.showModal();
   }
@@ -916,6 +918,7 @@
       s.askWhere = $('#sAsk').checked;
       s.hideSmall = $('#sHideSmall').checked;
       s.cover = $('#sCover').checked;
+      s.igButtons = $('#sIg').checked;
       const t = document.querySelector('#sTheme button[aria-pressed="true"]');
       s.theme = t ? t.dataset.v : 'system';
       saveSettings(); applyTheme(); render();

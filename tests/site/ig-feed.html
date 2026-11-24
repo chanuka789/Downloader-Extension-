@@ -1,0 +1,31 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Instagram</title>
+<style>
+ body{margin:0;font-family:sans-serif;background:#fff} main{display:flex;gap:24px;padding:16px;align-items:flex-start}
+ .feed{width:420px} article{border:1px solid #ddd;margin-bottom:16px} article header{padding:8px}
+ .media{width:400px;height:400px;position:relative;overflow:hidden} .media img,.media video{width:400px;height:400px;object-fit:cover;display:block}
+ .cover{position:absolute;inset:0} ul{list-style:none;margin:0;padding:0;position:relative;height:400px;transition:none}
+ li{position:absolute;top:0;left:0;width:400px;height:400px}
+ .grid{display:grid;grid-template-columns:repeat(3,150px);gap:4px} .grid a{display:block;width:150px;height:150px;position:relative} .grid img{width:150px;height:150px;object-fit:cover}
+</style></head><body><main>
+<section class="feed">
+  <article id="a1"><header><a href="/photographer/">photographer</a></header>
+    <div class="media"><img src="/photo-large.jpg" alt=""><div class="cover"></div></div>
+    <a href="/p/Cpost1/"><time>2h</time></a></article>
+  <article id="a2"><header><a href="/carouser/">carouser</a></header>
+    <div class="media"><ul id="car">
+      <li style="transform:translateX(0px)"><img src="/hero-1920.jpg"></li>
+      <li style="transform:translateX(400px)"><img src="/lazy.jpg"></li>
+      <li style="transform:translateX(800px)"><video src="/clip.mp4" muted></video></li>
+    </ul><div class="cover"></div></div>
+    <a href="/carouser/p/Ccar3xyz/"><time>3h</time></a></article>
+  <article id="a3"><header><a href="/photographer/">photographer</a></header>
+    <div class="media"><video src="/clip.mp4" muted></video><div class="cover"></div></div>
+    <a href="/reel/Creel2/"><time>5h</time></a></article>
+</section>
+<section class="grid" aria-label="Explore">
+  <a href="/p/Cpost1/"><img src="/photo-small.jpg"></a>
+  <a href="/p/Ccar3xyz/"><img src="/hero-480.jpg"></a>
+  <a href="/p/CnoData9x/"><img src="/bg.jpg"></a>
+</section></main>
+<script>setTimeout(() => fetch('/ig-feed-api.json').then(r => r.json()), 200);</script>
+</body></html>

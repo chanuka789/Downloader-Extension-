@@ -217,8 +217,81 @@
     return /image_versions2|video_versions|video_dash_manifest|display_resources|playable_url|browser_native_|hd_src|video_info|media_url_https|playAddr|bitrateInfo|"uri":"https?:/.test(text);
   }
 
+  // ------------------------------------------------------------------
+  // Instagram posts, grouped: one entry per post / reel / story item with
+  // all its media in order (carousels). Used by the in-page buttons.
+  // ------------------------------------------------------------------
+  function fileKey(u) {
+    try { return new URL(u).pathname.split('/').pop() || ''; } catch (e) { return ''; }
+  }
+
+  function igMediaOf(m) {
+    let img = null;
+    if (m.image_versions2 && Array.isArray(m.image_versions2.candidates)) img = best(m.image_versions2.candidates, area);
+    else if (Array.isArray(m.display_resources) && m.display_resources.length) {
+      const r = best(m.display_resources, (x) => (x.config_width || 0) * (x.config_height || 0));
+      if (r) img = { url: r.src, width: r.config_width, height: r.config_height };
+    } else if (isHttp(m.display_url)) img = { url: m.display_url, width: m.dimensions && m.dimensions.width, height: m.dimensions && m.dimensions.height };
+    if (img && !isHttp(img.url)) img = null;
+
+    let vid = null;
+    if (Array.isArray(m.video_versions) && m.video_versions.length) {
+      const v = best(m.video_versions, (c) => area(c) * 10 + (Number(c.type) || 0));
+      if (v && isHttp(v.url)) vid = { url: v.url, width: v.width || m.original_width, height: v.height || m.original_height };
+    } else if (isHttp(m.video_url)) {
+      vid = { url: m.video_url, width: m.dimensions && m.dimensions.width, height: m.dimensions && m.dimensions.height };
+    }
+    const thumb = img ? img.url : undefined;
+    const thumbFile = img ? fileKey(img.url) : '';
+    if (vid || looksLikeMpd(m.video_dash_manifest)) {
+      if (looksLikeMpd(m.video_dash_manifest)) {
+        const dim = mpdMaxHeight(m.video_dash_manifest);
+        if (!vid || dim.height > (Number(vid.height) || 0)) {
+          return { kind: 'dash', url: 'mpd:' + (m.pk || m.id || m.code || m.video_dash_manifest.length), manifest: m.video_dash_manifest, width: dim.width, height: dim.height, thumb, thumbFile, alt: vid ? vid.url : undefined };
+        }
+      }
+      return { kind: 'video', url: vid.url, width: vid.width, height: vid.height, thumb, thumbFile, file: fileKey(vid.url) };
+    }
+    if (img) return { kind: 'image', url: img.url, width: img.width, height: img.height, file: thumbFile };
+    return null;
+  }
+
+  function extractPosts(data) {
+    const out = [];
+    const stack = [data];
+    const childSet = new WeakSet(); // carousel slides belong to their parent post
+    let count = 0;
+    while (stack.length && count < MAX_NODES) {
+      const o = stack.pop();
+      count++;
+      if (!o || typeof o !== 'object') continue;
+      if (Array.isArray(o)) { for (let i = o.length - 1; i >= 0; i--) if (o[i] && typeof o[i] === 'object') stack.push(o[i]); continue; }
+      if (childSet.has(o)) { for (const k in o) { const v = o[k]; if (v && typeof v === 'object') stack.push(v); } continue; }
+      const code = o.code || o.shortcode;
+      const pk = o.pk || (typeof o.id === 'string' ? o.id.split('_')[0] : o.id);
+      const hasMedia = o.image_versions2 || o.video_versions || o.carousel_media || o.display_resources || o.display_url || o.edge_sidecar_to_children;
+      if (hasMedia && (code || pk)) {
+        let children = null;
+        if (Array.isArray(o.carousel_media) && o.carousel_media.length) children = o.carousel_media;
+        else if (o.edge_sidecar_to_children && Array.isArray(o.edge_sidecar_to_children.edges)) children = o.edge_sidecar_to_children.edges.map((e) => e && e.node).filter(Boolean);
+        if (children) children.forEach((c) => c && typeof c === 'object' && childSet.add(c));
+        const media = (children || [o]).map(igMediaOf).filter(Boolean);
+        if (media.length) {
+          out.push({
+            code: typeof code === 'string' ? code : '',
+            pk: pk ? String(pk) : '',
+            user: (o.user && o.user.username) || (o.owner && o.owner.username) || '',
+            media
+          });
+        }
+      }
+      for (const k in o) { const v = o[k]; if (v && typeof v === 'object') stack.push(v); }
+    }
+    return out;
+  }
+
   Object.defineProperty(root, '__mediaHarborExtract', {
-    value: Object.freeze({ extract, parseLoose, mightContainMedia }),
+    value: Object.freeze({ extract, extractPosts, fileKey, parseLoose, mightContainMedia }),
     configurable: false, enumerable: false, writable: false
   });
 })(typeof globalThis !== 'undefined' ? globalThis : self);

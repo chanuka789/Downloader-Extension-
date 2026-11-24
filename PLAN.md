@@ -44,6 +44,21 @@ Status: **Phases 1–4 are built and tested.** Phase 5 is optional future work.
 - **Preview.** Full-screen lightbox with arrow keys and swipe; copy link; open in a new tab.
 - **Accessibility.** Keyboard: arrows move between cards, Space selects, Enter previews, D downloads, Ctrl/⌘+A selects all, Esc clears. Visible focus rings, ARIA labels, reduced-motion support, light and dark themes (follows the system by default).
 
+### Instagram in-page buttons (v1.1)
+| Where | Button |
+|---|---|
+| Feed post, post page, post pop-up | *Download* (single) or *This* + *All N* (carousel), top-right of the media |
+| Reels viewer | *Download* on the video |
+| Stories | *Download* near the bottom of the story (Instagram's own controls are at the top) |
+| Profile, Explore/search, hashtag, saved, tagged grids | Round button on each tile (saves the whole post) |
+| Everywhere | Bottom-right bar: *Select* → tick boxes → *Select all* / *Download N* / *Cancel* |
+
+How it works:
+- `content/instagram.js` draws the buttons in its own overlay (shadow DOM), so Instagram's code and styles are untouched. Buttons follow the posts while you scroll and hide when a pop-up covers the post.
+- Post data comes from what Instagram already loads (`page-hook.js` + embedded JSON) and is grouped per post (`extractPosts`).
+- The visible carousel slide is matched by its image file name, with a fallback to the slide position.
+- If a post was never loaded, its data is requested from Instagram's web API with the user's own session.
+
 ---
 
 ## 3. Architecture
@@ -77,16 +92,17 @@ extension/
 | 2 | HLS + DASH streams, AES-128, video + audio merge | ✅ Done |
 | 3 | Site modules: Instagram, Facebook, Threads, X, TikTok, JSON-LD | ✅ Done |
 | 4 | Responsive UX (popup + manager), settings, themes, tests | ✅ Done |
+| 4b | **Instagram in-page buttons** (feed, posts, carousels, reels, stories, profile / explore / search grids, bulk select) | ✅ Done (v1.1) |
 | 5 | Optional: ZIP export, download history page, more site rules, translations, Chrome Web Store listing | ⏳ Future |
 
 ---
 
 ## 5. Testing
 
-- `node tests/unit.js`: 27 checks for the URL rules and the social-media extractor.
+- `node tests/unit.js`: 32 checks for the URL rules and the social-media extractor.
 - `node tests/e2e.js`: loads the real extension in Chromium against a local test site and a fake Instagram feed. It checks detection, quality choice, DRM refusal, downloads, folder names, and uses `ffprobe` to confirm the merged MP4s have both video and audio (1080p HLS, 720p DASH, 1080×1920 Instagram reel). It also takes screenshots at popup, desktop, tablet and phone sizes in light and dark themes.
 
-Last result: **34/34 end-to-end checks passed (3 runs in a row), 27/27 unit checks passed.**
+Last result: **49/49 end-to-end checks passed (2 runs in a row), 32/32 unit checks passed.** The Instagram tests use local pages that copy Instagram's layout and data; the live site was not tested.
 
 ---
 

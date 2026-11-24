@@ -560,6 +560,27 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return;
   }
 
+  // From the Instagram buttons: save exactly these items
+  if (msg.type === 'ig:download' && sender.tab && Array.isArray(msg.items)) {
+    (async () => {
+      const tabId = sender.tab.id;
+      const raw = msg.items.slice(0, 500).filter((i) => i && typeof i.url === 'string' && ['image', 'video', 'dash'].includes(i.kind))
+        .map((i) => ({ kind: i.kind, url: i.url, width: i.width, height: i.height, thumb: i.thumb, manifest: i.manifest || null, title: String(i.title || '').slice(0, 120), source: 'site' }));
+      await addItems(tabId, raw, sender.frameId === 0 ? { url: sender.tab.url, title: sender.tab.title } : null, { docId: sender.documentId, top: sender.frameId === 0 });
+      const t = await getTab(tabId);
+      const ids = [];
+      for (const r of raw) {
+        const it = t.items.get(r.kind + '|' + r.url);
+        if (!it) continue;
+        if (r.title) it.title = r.title; // name like user_POSTCODE_2
+        ids.push(it.id);
+      }
+      const results = await startDownloads(tabId, ids);
+      sendResponse({ ok: ids.length > 0, count: ids.length, results });
+    })();
+    return true;
+  }
+
   // From offscreen document
   if (msg.type === 'job:progress') {
     const job = jobs.get(msg.jobId);
@@ -672,6 +693,9 @@ chrome.runtime.onInstalled.addListener(async () => {
   const open = await chrome.tabs.query({ url: ['http://*/*', 'https://*/*'] }).catch(() => []);
   for (const tab of open) {
     chrome.scripting.executeScript({ target: { tabId: tab.id, allFrames: true }, files: ['shared/rules.js', 'shared/extract.js', 'content/detector.js'] }).catch(() => {});
+    if (/^https:\/\/(www\.)?instagram\.com\//.test(tab.url || '')) {
+      chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['shared/extract.js', 'content/instagram.js'] }).catch(() => {});
+    }
   }
 });
 

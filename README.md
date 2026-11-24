@@ -20,10 +20,19 @@ Save images and videos **in the best available quality** from Instagram, Faceboo
 - **Responsive UI**: toolbar popup plus a full-page manager for desktop, tablet and phone-sized windows. Light/dark theme, search, filters, preview, keyboard shortcuts.
 - **Organised files**: `Downloads/MediaHarbor/<website>/<name>.<ext>` (you can change this in Settings).
 - **Right-click menu**: *Save in best quality* on any image or video.
+- **Download buttons inside Instagram** (new in 1.1):
+  - **Feed and post pages**: a *Download* button on every post. Carousels get *This* (the slide you are looking at) and *All N*.
+  - **Reels and stories**: a *Download* button on the video or photo.
+  - **Profile, Explore/search, hashtag, saved and tagged grids**: a round button on every tile that saves the whole post.
+  - **Bulk**: press *Select* in the bar at the bottom right, tick posts (or *Select all*), then *Download N*.
+  - Files are named `username_POSTCODE.jpg`, or `username_POSTCODE_2.mp4` for carousels, in full quality. HD reels are joined from video + audio.
+  - You can switch the buttons off in Settings → *Download buttons on Instagram*.
+
+![Instagram buttons](docs/screenshots/instagram-buttons.png)
 
 ## Install (developer mode, 2 minutes)
 
-1. Download `MediaHarbor-v1.0.0.zip` and **unzip** it into a folder you will keep.
+1. Download `MediaHarbor-v1.1.0.zip` and **unzip** it into a folder you will keep.
    Or clone this repository and use the `extension/` folder.
 2. Open Chrome and go to `chrome://extensions`.
 3. Switch on **Developer mode** (top-right corner).
@@ -46,7 +55,8 @@ It also works in other Chromium browsers that support Chrome extensions (Edge, B
 - **DRM-protected videos** cannot be downloaded and are marked *Protected*.
 - **Live streams** can be saved after they end.
 - **Chrome on Android/iPhone does not support extensions.** The phone layout is for narrow windows and for mobile Chromium browsers that can load Chrome extensions (not tested; this needs verification).
-- Social sites change their code often, so some sites may need rule updates later.
+- Social sites change their code often, so some sites may need rule updates later. The Instagram buttons were tested on test pages that copy Instagram's layout and data, not on the live Instagram site. Small fixes may be needed after real use.
+- For grid posts that were never loaded, MediaHarbor asks Instagram's web API for the post data using your own login. Bulk downloads are spaced out, but downloading very many posts quickly may still trigger Instagram's rate limits.
 - Very large videos (multi-GB) are processed in memory and may fail.
 
 **Please respect copyright.** Only download content you own or have permission to use, and follow each website's terms.

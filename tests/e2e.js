@@ -203,6 +203,86 @@ function check(cond, msg) {
       const v = st.find((x) => x.codec_type === 'video'); const a = st.find((x) => x.codec_type === 'audio');
       check(!!v && v.height === 1920 && !!a, `merged reel has 1080x1920 video + audio (${v ? v.width + 'x' + v.height : '-'}, audio ${a ? 'yes' : 'no'})`);
     }
+
+    // ---------- download buttons inside Instagram pages ----------
+    const feed = await ctx.newPage();
+    await feed.setViewportSize({ width: 1100, height: 1400 });
+    const feedErrors = [];
+    feed.on('pageerror', (e) => feedErrors.push(String(e)));
+    await feed.goto('https://www.instagram.com/ig-feed.html');
+    await sleep(2500);
+    const names = () => sw.evaluate(() => Object.values(self.__names));
+    const waitNames = async (pred, ms = 20000) => {
+      for (let i = 0; i < ms / 500; i++) { const n = await names(); if (pred(n)) return n; await sleep(500); }
+      return names();
+    };
+    const groupsCount = await feed.locator('mediaharbor-overlay .g').count();
+    check(groupsCount === 6, `buttons shown on 3 feed posts + 3 grid tiles (${groupsCount})`);
+    const carGroup = feed.locator('mediaharbor-overlay .g', { hasText: 'All 3' });
+    check(await carGroup.count() === 1, 'carousel post shows "This" + "All 3"');
+    await feed.screenshot({ path: path.join(SHOTS, 'instagram-buttons.png') });
+
+    // single photo post
+    await feed.locator('mediaharbor-overlay .g').filter({ hasText: 'Download' }).first().click();
+    let n = await waitNames((l) => l.some((x) => x.endsWith('/photographer_Cpost1.jpg')));
+    check(n.some((x) => x === 'MediaHarbor/instagram.com/photographer_Cpost1.jpg'), 'post button saves the HD photo as photographer_Cpost1.jpg');
+
+    // carousel: move to slide 2, then "This"
+    await feed.evaluate(() => { document.getElementById('car').style.transform = 'translateX(-400px)'; });
+    await sleep(600);
+    await carGroup.locator('button', { hasText: 'This' }).click();
+    n = await waitNames((l) => l.some((x) => x.endsWith('carouser_Ccar3xyz_2.jpg')));
+    check(n.some((x) => x.endsWith('/carouser_Ccar3xyz_2.jpg')), '"This" saves the visible carousel slide (slide 2)');
+    await carGroup.locator('button', { hasText: 'All 3' }).click();
+    n = await waitNames((l) => l.some((x) => x.endsWith('carouser_Ccar3xyz_3.mp4')));
+    check(['_1.jpg', '_2.jpg', '_3.mp4'].every((sfx) => n.some((x) => x.endsWith('carouser_Ccar3xyz' + sfx))), '"All 3" saves every photo and video of the carousel');
+
+    // grid tile whose post data was never loaded -> fetched from the Instagram web API
+    const tiles = feed.locator('mediaharbor-overlay .g .b.round');
+    check(await tiles.count() === 3, 'each grid tile has a round download button');
+    const tileBoxes = await feed.evaluate(() => [...document.querySelectorAll('.grid a')].map((a) => a.getAttribute('href')));
+    await feed.evaluate(() => window.scrollTo(0, 0));
+    // the 3rd tile is CnoData9x: find the button closest to it
+    const tileRect = await feed.locator('.grid a[href="/p/CnoData9x/"]').boundingBox();
+    await feed.mouse.click(tileRect.x + tileRect.width - 8 - 17, tileRect.y + 8 + 17);
+    n = await waitNames((l) => l.some((x) => x.endsWith('fallback_CnoData9x.jpg')));
+    if (!n.some((x) => x.endsWith('fallback_CnoData9x.jpg'))) console.log('   names:', n.join(' | '));
+    check(n.some((x) => x.endsWith('/fallback_CnoData9x.jpg')), 'tile of an unknown post: data fetched, photo saved (' + tileBoxes.length + ' tiles)');
+
+    // bulk: select mode -> select all -> download
+    const before = (await names()).length;
+    await feed.locator('mediaharbor-overlay .bar button', { hasText: 'Select' }).first().click();
+    await sleep(400);
+    await feed.locator('mediaharbor-overlay .bar button', { hasText: 'Select all' }).click();
+    await sleep(400);
+    const goText = await feed.locator('mediaharbor-overlay .bar button.primary').textContent();
+    check(await feed.locator('mediaharbor-overlay .ck.on').count() === 6, 'after "Select all" every tick box shows as ticked');
+    check(/Download 4/.test(goText), `select all picks the 4 different posts on the page ("${goText.trim()}")`);
+    await feed.screenshot({ path: path.join(SHOTS, 'instagram-select.png') });
+    await feed.locator('mediaharbor-overlay .bar button.primary').click();
+    n = await waitNames((l) => l.length >= before + 6, 30000);
+    check(n.length - before >= 6, `bulk download saves all media of the selected posts (${n.length - before} files)`);
+    check(feedErrors.length === 0, 'no errors on the Instagram page ' + (feedErrors[0] || ''));
+
+    // reels viewer and stories (data embedded in the page)
+    for (const [url, expect, label] of [
+      ['https://www.instagram.com/reels/CreelV9/', 'reeluser_CreelV9.mp4', 'Reels viewer'],
+      ['https://www.instagram.com/stories/storyuser/9001/', 'storyuser_9001.mp4', 'Stories']
+    ]) {
+      const p2 = await ctx.newPage();
+      await p2.setViewportSize({ width: 900, height: 800 });
+      await p2.goto(url);
+      await sleep(2000);
+      const btn = p2.locator('mediaharbor-overlay .g button', { hasText: 'Download' });
+      check(await btn.count() === 1, `${label}: download button shown`);
+      if (label === 'Stories') await p2.screenshot({ path: path.join(SHOTS, 'instagram-story.png') });
+      if (await btn.count()) {
+        await btn.click();
+        n = await waitNames((l) => l.some((x) => x.endsWith('/' + expect)));
+        check(n.some((x) => x.endsWith('/' + expect)), `${label}: video saved as ${expect}`);
+      }
+      await p2.close();
+    }
   } catch (e) {
     console.error(e);
     process.exitCode = 1;

@@ -79,5 +79,19 @@ eq(X.parseLoose('for (;;);{"a":1}').length, 1, 'parses for(;;); prefix');
 eq(X.parseLoose('{"a":1}\n{"b":2}\n').length, 2, 'parses JSON lines');
 eq(X.mightContainMedia('{"hello":"world"}'), false, 'skips unrelated responses quickly');
 
+// ---------------- Instagram posts grouped for the in-page buttons ----------------
+const posts = X.extractPosts({ items: [{ pk: '1', code: 'CAR', user: { username: 'ann' }, carousel_media: [
+  { pk: '11', image_versions2: { candidates: [{ url: 'https://scontent.cdninstagram.com/v/a_n.jpg?stp=s640', width: 640, height: 640 }, { url: 'https://scontent.cdninstagram.com/v/a_n.jpg?stp=s1080', width: 1080, height: 1080 }] } },
+  { pk: '12', image_versions2: { candidates: [{ url: 'https://scontent.cdninstagram.com/v/cover_n.jpg', width: 1080, height: 1920 }] },
+    video_versions: [{ url: 'https://v.cdninstagram.com/v/clip.mp4', width: 720, height: 1280 }], video_dash_manifest: mpd }] }] });
+eq(posts.length, 1, 'Instagram carousel = one post (slides are not separate posts)');
+eq(posts[0].media.map((m) => m.kind), ['image', 'dash'], 'carousel media in order; 1080p DASH preferred over 720p MP4');
+eq(posts[0].media[0].file, 'a_n.jpg', 'image file name kept for matching the visible slide');
+eq(posts[0].media[1].thumbFile, 'cover_n.jpg', 'video cover file name kept for matching');
+const legacy = X.extractPosts({ shortcode_media: { shortcode: 'OLD1', id: '5', owner: { username: 'bob' }, edge_sidecar_to_children: { edges: [
+  { node: { display_url: 'https://x.cdninstagram.com/1.jpg', dimensions: { width: 1080, height: 1350 } } },
+  { node: { is_video: true, video_url: 'https://x.cdninstagram.com/2.mp4', display_url: 'https://x.cdninstagram.com/2.jpg', dimensions: { width: 720, height: 1280 } } }] } } });
+eq(legacy.map((p) => [p.code, p.user, p.media.map((m) => m.kind).join('+')]), [['OLD1', 'bob', 'image+video']], 'older Instagram data format (GraphQL sidecar) also works');
+
 console.log(failed ? `\n${failed} test(s) failed` : '\nAll unit tests passed');
 process.exitCode = failed ? 1 : 0;
