@@ -1,0 +1,7 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Instagram test feed</title></head>
+<body><h1>Feed</h1><div id="feed">Loading…</div>
+<script>
+  // like Instagram: posts arrive through an API call after the page loads
+  setTimeout(() => fetch('/ig-api.json').then(r => r.json()).then(() => { document.getElementById('feed').textContent = 'Loaded'; }), 300);
+  fetch('/drm.m3u8');
+</script></body></html>

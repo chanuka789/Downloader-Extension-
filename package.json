@@ -1,0 +1,16 @@
+{
+  "name": "mediaharbor",
+  "version": "1.0.0",
+  "private": true,
+  "description": "MediaHarbor – Chrome extension to save images and videos in the best available quality.",
+  "scripts": {
+    "test": "node tests/unit.js && node tests/e2e.js",
+    "test:unit": "node tests/unit.js",
+    "test:e2e": "node tests/e2e.js",
+    "icons": "node tools/make-icons.js",
+    "package": "bash tools/package.sh"
+  },
+  "devDependencies": {
+    "playwright": "^1.49.0"
+  }
+}

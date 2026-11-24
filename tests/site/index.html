@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>MediaHarbor Test Gallery</title>
+<meta property="og:image" content="/linked-full.jpg">
+<style>body{font-family:sans-serif;margin:20px} img{max-width:300px;display:block;margin:8px 0} .bg{width:400px;height:200px;background:url(bg.jpg) center/cover}</style>
+</head><body>
+<h1>Test gallery</h1>
+<img src="hero-480.jpg" srcset="hero-480.jpg 480w, hero-1920.jpg 1920w" sizes="300px" alt="Hero with srcset">
+<img src="photo-large.jpg" alt="Large photo">
+<img src="icon.png" alt="tiny icon" style="width:16px">
+<img data-src="lazy.jpg" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="Lazy image">
+<div class="bg"></div>
+<a href="linked-full.jpg">Full size photo link</a>
+<video src="clip.mp4" controls muted width="320"></video>
+<script type="application/json">{"items":[{"code":"ABC123","user":{"username":"tester"},"image_versions2":{"candidates":[{"url":"http://127.0.0.1:8765/photo-small.jpg","width":300,"height":200},{"url":"http://127.0.0.1:8765/photo-large.jpg","width":2400,"height":1600}]}}]}</script>
+<script>
+  // simulate a player loading streams
+  fetch('hls/master.m3u8').then(r=>r.text()).then(()=>fetch('hls/v0.m3u8'));
+  fetch('enc/index.m3u8');
+  fetch('dash/stream.mpd');
+</script>
+</body></html>

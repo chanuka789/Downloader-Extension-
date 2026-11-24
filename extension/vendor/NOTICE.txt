@@ -1,0 +1,5 @@
+Third-party software bundled with MediaHarbor
+
+ffmpeg/        @ffmpeg/ffmpeg 0.12.15  - MIT License - https://github.com/ffmpegwasm/ffmpeg.wasm
+ffmpeg-core/   @ffmpeg/core 0.12.10    - GPL-2.0-or-later - FFmpeg (https://ffmpeg.org) compiled to WebAssembly
+               Source: https://github.com/ffmpegwasm/ffmpeg.wasm (packages/core) and https://ffmpeg.org/download.html
