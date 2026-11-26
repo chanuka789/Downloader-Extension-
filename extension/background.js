@@ -4,11 +4,13 @@
  *  - Watches network traffic for videos, HLS (.m3u8) and DASH (.mpd) streams
  *  - Starts downloads (direct files) and stream jobs (offscreen document + ffmpeg.wasm)
  */
-importScripts('shared/rules.js');
+importScripts('shared/rules.js', 'shared/download-tools.js');
+const D = self.MHDownloadTools;
 
 const R = self.MHRules;
 const MAX_ITEMS_PER_TAB = 2000;
 const DEFAULT_SETTINGS = {
+  ...D.defaults,
   folder: 'MediaHarbor',
   bySite: true,
   askWhere: false,
@@ -100,7 +102,7 @@ function mergeItem(old, inc) {
   const incArea = (inc.width || 0) * (inc.height || 0);
   const oldArea = (old.width || 0) * (old.height || 0);
   if (incArea > oldArea) { out.width = inc.width; out.height = inc.height; }
-  for (const k of ['thumb', 'title', 'alt', 'size', 'mime', 'manifest', 'note', 'quality', 'fallback', 'variants', 'hasAudio', 'duration']) {
+  for (const k of ['thumb', 'title', 'alt', 'size', 'mime', 'manifest', 'note', 'quality', 'fallback', 'variants', 'hasAudio', 'duration', 'creator', 'caption', 'postId', 'index']) {
     if ((out[k] === undefined || out[k] === null || out[k] === '' || out[k] === 0) && inc[k] !== undefined && inc[k] !== null && inc[k] !== '') out[k] = inc[k];
   }
   // flags only switch on (a stream found to be protected stays protected)
@@ -155,7 +157,7 @@ async function addItems(tabId, list, page, ctx) {
         source: raw.source || 'page', manifest: raw.manifest || null,
         hasAudio: raw.hasAudio, quality: raw.quality || '', note: raw.note || '',
         variants: raw.variants || null, drm: !!raw.drm, live: !!raw.live,
-        site, order: ++t.seq
+        creator: raw.creator || '', caption: raw.caption || '', postId: raw.postId || '', index: raw.index || 1, site, order: ++t.seq
       };
     }
     t.items.set(key, item);
@@ -202,7 +204,7 @@ function broadcast(tabId, msg) {
   }
 }
 function broadcastJobs() {
-  const list = [...jobs.values()].slice(-40).map(({ item, ...j }) => j);
+  const list = [...jobs.values()].filter(j => !j.hidden).slice(-40).map(({ item, _resolve, settings, bundleItems, ...j }) => j);
   for (const p of ports) { try { p.postMessage({ type: 'jobs', jobs: list.filter((j) => j.tabId === p._tabId || p._allJobs) }); } catch (e) { ports.delete(p); } }
 }
 function setItemStatus(tabId, itemId, status) {
@@ -374,7 +376,10 @@ function buildFilename(item, settings, pageTitle, pageUrl) {
   if (folder) parts.push(folder);
   const site = item.site || (pageUrl ? hostOf(pageUrl) : '');
   if (settings.bySite && site) parts.push(sanitize(site.replace(/^www\./, '')) || 'site');
-  parts.push(`${base}.${ext}`);
+  if (settings.filenameTemplate) {
+    const custom = D.template(settings.filenameTemplate, { creator: item.creator || 'unknown', date: new Date().toISOString().slice(0, 10), 'post-id': item.postId || item.title || item.id, index: item.index || 1, title: base, site, name: base });
+    parts.push(`${custom}.${ext}`);
+  } else parts.push(`${base}.${ext}`);
   return parts.join('/');
 }
 
@@ -415,38 +420,110 @@ async function removeRule(id) {
 }
 
 // ------------------------------------------------------------------ downloads
-async function startDownloads(tabId, ids) {
+async function startDownloads(tabId, ids, options = {}) {
+  await queueReady;
   const t = await getTab(tabId);
-  const settings = await getSettings();
-  const byId = new Map([...t.items.values()].map((i) => [i.id, i]));
+  const settings = D.effective(await getSettings(), t.page.url);
+  if (options.quality) settings.quality = options.quality;
+  const byId = new Map([...t.items.values()].map(i => [i.id, i]));
   const results = [];
-  for (const id of ids) {
+  for (const id of [...new Set(ids)].slice(0, 2000)) {
     const item = byId.get(id);
     if (!item) continue;
-    if (item.drm) { setItemStatus(tabId, id, 'error'); results.push({ id, error: 'drm' }); continue; }
-    if (item.kind === 'hls' || item.kind === 'dash') { queueStreamJob(tabId, item, settings, t.page); results.push({ id, job: true }); continue; }
-    const filename = buildFilename(item, settings, t.page.title, t.page.url);
-    try {
-      setItemStatus(tabId, id, 'downloading');
-      const downloadId = await chrome.downloads.download({ url: item.url, filename, conflictAction: 'uniquify', saveAs: !!settings.askWhere && ids.length === 1 });
-      downloadMap.set(downloadId, { itemId: id, tabId, item, filename, page: t.page, retried: false });
-      results.push({ id, downloadId });
-    } catch (e) {
-      // Fallback: fetch with page referer in the offscreen document
-      retryViaOffscreen(tabId, item, filename, t.page);
-      results.push({ id, retry: true });
-    }
-    if (ids.length > 6) await new Promise((r) => setTimeout(r, 120)); // be gentle with servers
+    if (item.drm || item.live) { results.push({ id, error: item.drm ? 'DRM protected' : 'Live stream' }); continue; }
+    const duplicate = [...jobs.values()].find(j => j.item?.url === item.url && j.quality === settings.quality && !['error', 'canceled'].includes(j.status));
+    if (duplicate && !options.force && settings.duplicatePolicy !== 'allow') { results.push({ id, duplicate: true, skipped: settings.duplicatePolicy === 'skip' }); continue; }
+    const job = newJob(tabId, { ...item }, buildFilename(item, settings, t.page.title, t.page.url), item.kind === 'hls' || item.kind === 'dash' ? item.kind : 'native');
+    Object.assign(job, { page: { ...t.page }, quality: settings.quality, settings, createdAt: Date.now(), saveAs: !!settings.askWhere && ids.length === 1 });
+    results.push({ id, jobId: job.id, job: true });
   }
+  await saveQueue(); broadcastJobs(); pumpQueue();
   return results;
 }
 
-async function retryViaOffscreen(tabId, item, filename, page) {
-  const url = item.url;
-  const job = newJob(tabId, item, filename, 'direct');
-  job.stage = 'Retrying download…';
-  broadcastJobs();
-  jobQueue = jobQueue.then(() => runJob(job, { mode: 'direct', url, fallback: item.fallback, page }));
+let queuePaused = false;
+let savingQueue = Promise.resolve();
+function saveQueue() {
+  const records = [...jobs.values()].filter(j => !['done', 'error', 'canceled'].includes(j.status)).concat([...jobs.values()].filter(j => ['done', 'error', 'canceled'].includes(j.status)).slice(-500));
+  const retained = new Set(records.map(j => j.id));
+  for (const [id] of jobs) if (!retained.has(id)) jobs.delete(id);
+  const data = records.map(({ _resolve, ...j }) => j);
+  savingQueue = savingQueue.catch(() => {}).then(() => chrome.storage.local.set({ downloadHistory: data, queuePaused }));
+  return savingQueue;
+}
+const queueReady = (async () => {
+  const saved = await chrome.storage.local.get(['downloadHistory', 'queuePaused']);
+  queuePaused = !!saved.queuePaused;
+  for (const job of saved.downloadHistory || []) {
+    jobs.set(job.id, job);
+    if (['running', 'paused'].includes(job.status)) {
+      const downloads = job.downloadId ? await chrome.downloads.search({ id: job.downloadId }) : [];
+      const d = downloads[0];
+      if (job.ruleId) { await removeRule(job.ruleId); job.ruleId = null; }
+      if (d?.state === 'in_progress') {
+        job.status = d.paused ? 'paused' : 'running';
+        downloadMap.set(d.id, { itemId: job.itemId, tabId: job.tabId, item: job.item, filename: job.filename, page: job.page, jobId: job.id, retried: true });
+      } else { job.status = d?.state === 'complete' ? 'done' : 'error'; job.error = job.status === 'error' ? 'Processing was interrupted. Retry this item from history.' : ''; }
+    }
+  }
+  await saveQueue();
+})();
+let pumping = false;
+async function pumpQueue() {
+  await queueReady;
+  if (pumping || queuePaused) return;
+  pumping = true;
+  try {
+    const limit = Math.max(1, Math.min(6, +(await getSettings()).maxConcurrent || 3));
+    for (const job of jobs.values()) {
+      if (job.status !== 'queued') continue;
+      const active = [...jobs.values()].filter(j => ['running', 'paused'].includes(j.status));
+      if (active.length >= limit) break;
+      if (job.mode !== 'native' && active.some(j => j.mode !== 'native')) continue;
+      job.status = 'running'; job.stage = 'Downloading…';
+      await saveQueue(); broadcastJobs();
+      if (job.mode === 'native') runNative(job); else jobQueue = jobQueue.catch(() => {}).then(() => runJob(job, { mode: job.mode, url: job.item.url, manifest: job.item.manifest, page: job.page, quality: job.quality, items: job.bundleItems }));
+    }
+  } finally { pumping = false; }
+}
+queueReady.then(pumpQueue);
+chrome.storage.onChanged?.addListener((changes, area) => { if (area === 'sync' && changes.settings) pumpQueue(); });
+async function runNative(job) {
+  try {
+    const downloadId = await chrome.downloads.download({ url: job.item.url, filename: job.filename, conflictAction: 'uniquify', saveAs: job.saveAs });
+    job.downloadId = downloadId;
+    if (job.status === 'canceled') { await chrome.downloads.cancel(downloadId); return; }
+      downloadMap.set(downloadId, { itemId: job.itemId, tabId: job.tabId, item: job.item, filename: job.filename, page: job.page, jobId: job.id, retried: false });
+    setItemStatus(job.tabId, job.itemId, 'downloading'); await saveQueue();
+  } catch (e) { if (job.status !== 'canceled') await fallbackJob(job); }
+}
+async function fallbackJob(job) {
+  if (!job || job.status === 'canceled') return;
+  job.mode = 'direct'; job.status = 'queued'; job.stage = 'Retrying with page permissions…';
+  await saveQueue(); broadcastJobs(); pumpQueue();
+}
+async function controlJob(id, action) {
+  await queueReady;
+  const job = jobs.get(id); if (!job) throw new Error('Download not found');
+  if (action === 'cancel') {
+    if (!['queued', 'running', 'paused'].includes(job.status)) throw new Error('This download has already finished');
+    if (job.downloadId && ['running', 'paused'].includes(job.status)) await chrome.downloads.cancel(job.downloadId);
+    if (job.status === 'running' && job.mode !== 'native') await sendOffscreen({ type: 'job:cancel', jobId: id });
+    finishJob(id, 'canceled');
+  } else if (action === 'pause') {
+    if (job.mode !== 'native' || !job.downloadId || job.status !== 'running') throw new Error('Pause is available for direct downloads. Stream jobs can be canceled and retried.');
+    await chrome.downloads.pause(job.downloadId); job.status = 'paused';
+  } else if (action === 'resume') {
+    if (job.status !== 'paused') throw new Error('Download is not paused');
+    await chrome.downloads.resume(job.downloadId); job.status = 'running';
+  } else if (action === 'retry') {
+    if (!['error', 'canceled'].includes(job.status)) throw new Error('Only failed or canceled downloads can be retried');
+    // A retry gets a fresh identity so a late canceled attempt cannot overwrite it.
+    const mode = job.bundleItems ? 'zip' : ['hls', 'dash'].includes(job.item.kind) ? job.item.kind : 'native';
+    const retry = newJob(job.tabId, { ...job.item }, job.filename, mode);
+    Object.assign(retry, { page: job.page, quality: job.quality, settings: job.settings, bundleItems: job.bundleItems, createdAt: Date.now(), saveAs: job.saveAs });
+  }
+  await saveQueue(); broadcastJobs(); pumpQueue(); return { ok: true };
 }
 
 chrome.downloads.onChanged.addListener(async (delta) => {
@@ -455,18 +532,18 @@ chrome.downloads.onChanged.addListener(async (delta) => {
   if (delta.state && delta.state.current === 'complete') {
     setItemStatus(rec.tabId, rec.itemId, 'done');
     if (rec.blobUrl) sendOffscreen({ type: 'revoke', url: rec.blobUrl });
-    if (rec.jobId) finishJob(rec.jobId, 'done');
+    if (rec.jobId) { finishJob(rec.jobId, 'done'); saveMetadata(jobs.get(rec.jobId), rec.filename).catch(e => { const j = jobs.get(rec.jobId); if (j) { j.warning = 'Media saved, but source information could not be saved: ' + friendlyError(e); saveQueue(); broadcastJobs(); } }); }
     downloadMap.delete(delta.id);
   } else if (delta.state && delta.state.current === 'interrupted') {
     const err = (delta.error && delta.error.current) || '';
     downloadMap.delete(delta.id);
     if (rec.blobUrl) sendOffscreen({ type: 'revoke', url: rec.blobUrl });
     if (err === 'USER_CANCELED') { setItemStatus(rec.tabId, rec.itemId, ''); if (rec.jobId) finishJob(rec.jobId, 'canceled'); return; }
-    if (!rec.retried && !rec.jobId) {
-      retryViaOffscreen(rec.tabId, rec.item, rec.filename, rec.page);
+    if (!rec.retried && rec.jobId) {
+      fallbackJob(jobs.get(rec.jobId));
     } else {
       setItemStatus(rec.tabId, rec.itemId, 'error');
-      if (rec.jobId) finishJob(rec.jobId, 'error', 'Download failed: ' + err);
+      if (rec.jobId) finishJob(rec.jobId, 'error', friendlyError(err));
     }
   }
 });
@@ -480,13 +557,6 @@ function newJob(tabId, item, filename, mode) {
   return job;
 }
 
-function queueStreamJob(tabId, item, settings, page) {
-  const filename = buildFilename(item, settings, page.title, page.url);
-  const job = newJob(tabId, item, filename, item.kind);
-  broadcastJobs();
-  jobQueue = jobQueue.then(() => runJob(job, { mode: item.kind, url: item.url, manifest: item.manifest, page }));
-}
-
 async function runJob(job, spec) {
   if (job.status === 'canceled') return;
   job.status = 'running'; job.stage = 'Starting…';
@@ -495,21 +565,26 @@ async function runJob(job, spec) {
   let ruleId = null;
   try {
     await ensureOffscreen();
+    if (job.status === 'canceled') return;
     const hosts = [hostOf(spec.url), hostOf(spec.page && spec.page.url)].filter(Boolean);
     ruleId = await addRefererRule(spec.page && spec.page.url, spec.mode === 'direct' ? hosts : []);
     job.ruleId = ruleId;
+    if (job.status === 'canceled') return;
     const result = await new Promise((resolve) => {
       job._resolve = resolve;
-      sendOffscreen({ type: 'job:start', job: { id: job.id, mode: spec.mode, url: spec.url, fallback: spec.fallback, manifest: spec.manifest, pageUrl: spec.page && spec.page.url, filename: job.filename } });
+      sendOffscreen({ type: 'job:start', job: { id: job.id, mode: spec.mode, url: spec.url, fallback: spec.fallback, manifest: spec.manifest, quality: spec.quality, items: spec.items, page: spec.page, exportMetadata: job.settings?.exportMetadata, pageUrl: spec.page && spec.page.url, filename: job.filename } });
     });
+    if (job.status === 'canceled') { for (const f of result.files || []) sendOffscreen({ type: 'revoke', url: f.blobUrl }); return; }
     if (result.error) throw new Error(result.error);
     for (const f of result.files) {
       const filename = f.suffix ? job.filename.replace(/\.(\w+)$/, `${f.suffix}.${f.ext}`) : job.filename.replace(/\.(\w+)$/, '.' + f.ext);
       job.stage = 'Saving…';
       broadcastJobs();
       const downloadId = await chrome.downloads.download({ url: f.blobUrl, filename, conflictAction: 'uniquify' });
+      job.downloadId = downloadId;
       downloadMap.set(downloadId, { itemId: job.itemId, tabId: job.tabId, item: job.item, filename, blobUrl: f.blobUrl, jobId: f.last ? job.id : null, retried: true });
     }
+    await saveQueue();
     job.progress = 1;
     job.warning = result.warning || '';
     job.stage = result.warning ? result.warning : 'Saving…';
@@ -517,30 +592,34 @@ async function runJob(job, spec) {
   } catch (e) {
     finishJob(job.id, job.status === 'canceled' ? 'canceled' : 'error', friendlyError(e));
   } finally {
-    await removeRule(ruleId);
+    await removeRule(job.ruleId || ruleId);
+    pumpQueue();
   }
 }
 
-function friendlyError(e) {
-  const s = String((e && e.message) || e || 'Unknown error');
-  if (/drm|encrypted|SAMPLE-AES/i.test(s)) return 'This video is protected (DRM) and cannot be downloaded.';
-  if (/live/i.test(s)) return 'Live streams cannot be saved. Try again when the stream has ended.';
-  if (/403|401|forbidden/i.test(s)) return 'The website refused the download (link expired or login needed). Reload the page and try again.';
-  if (/memory|allocation|RangeError/i.test(s)) return 'The video is too large to process in the browser.';
-  return s.slice(0, 200);
-}
+function friendlyError(e) { return D.error(e); }
 
 function finishJob(jobId, status, error) {
   const job = jobs.get(jobId);
   if (!job) return;
   job.status = status;
   job.error = error || '';
+  if (status === 'done') job.completedAt = Date.now();
   if (status === 'done') { job.progress = 1; job.stage = job.warning || 'Saved'; }
   if (status === 'error') job.stage = 'Failed';
   if (status === 'canceled') job.stage = 'Canceled';
   setItemStatus(job.tabId, job.itemId, status === 'done' ? 'done' : status === 'error' ? 'error' : '');
   if (job._resolve) { job._resolve({ error: error || status }); job._resolve = null; }
-  broadcastJobs();
+  saveQueue().catch(console.error); broadcastJobs(); pumpQueue();
+}
+
+async function saveMetadata(job, filename = job?.filename) {
+  if (!job?.settings?.exportMetadata || job.mode === 'zip') return;
+  await ensureOffscreen();
+  const result = await sendOffscreen({ type: 'metadata', data: D.metadata(job.item, job.page || {}), filename: filename + '.json' });
+  if (result?.url) {
+    try { await chrome.downloads.download({ url: result.url, filename: filename + '.json', conflictAction: 'uniquify' }); } finally { sendOffscreen({ type: 'revoke', url: result.url }); }
+  }
 }
 
 function sendOffscreen(msg) {
@@ -565,7 +644,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     (async () => {
       const tabId = sender.tab.id;
       const raw = msg.items.slice(0, 500).filter((i) => i && typeof i.url === 'string' && ['image', 'video', 'dash'].includes(i.kind))
-        .map((i) => ({ kind: i.kind, url: i.url, width: i.width, height: i.height, thumb: i.thumb, manifest: i.manifest || null, title: String(i.title || '').slice(0, 120), source: 'site' }));
+        .map((i) => ({ kind: i.kind, url: i.url, width: i.width, height: i.height, thumb: i.thumb, manifest: i.manifest || null, title: String(i.title || '').slice(0, 120), source: 'site', creator: i.creator || '', caption: i.caption || i.alt || '', postId: i.postId || '', index: i.index || 1 }));
       await addItems(tabId, raw, sender.frameId === 0 ? { url: sender.tab.url, title: sender.tab.title } : null, { docId: sender.documentId, top: sender.frameId === 0 });
       const t = await getTab(tabId);
       const ids = [];
@@ -576,7 +655,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         ids.push(it.id);
       }
       const results = await startDownloads(tabId, ids);
-      sendResponse({ ok: ids.length > 0, count: ids.length, results });
+      const duplicateCount = results.filter(r => r.duplicate).length;
+      sendResponse({ ok: ids.length > 0, count: results.filter(r => r.jobId).length, duplicates: duplicateCount, results });
     })();
     return true;
   }
@@ -593,6 +673,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === 'job:result') {
     const job = jobs.get(msg.jobId);
     if (job && job._resolve) { job._resolve(msg); job._resolve = null; }
+    else for (const f of msg.files || []) sendOffscreen({ type: 'revoke', url: f.blobUrl });
     return;
   }
   if (msg.type === 'job:hosts') {
@@ -613,7 +694,27 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
   // From UI pages
   if (msg.type === 'download') {
-    startDownloads(msg.tabId, msg.ids || []).then((r) => sendResponse({ ok: true, results: r }));
+    startDownloads(msg.tabId, msg.ids || [], msg.options || {}).then((r) => sendResponse({ ok: true, results: r })).catch(e => sendResponse({ ok: false, error: friendlyError(e) }));
+    return true;
+  }
+  if (msg.type === 'history:list' || msg.type === 'queue:pause' || msg.type === 'history:clear' || msg.type === 'download:control' || msg.type === 'images:zip') {
+    (async () => {
+      await queueReady;
+      if (msg.type === 'download:control') return controlJob(msg.jobId, msg.action);
+      if (msg.type === 'queue:pause') { queuePaused = !!msg.paused; await saveQueue(); pumpQueue(); }
+      if (msg.type === 'history:clear') { for (const [id, j] of jobs) if (['done', 'error', 'canceled'].includes(j.status)) jobs.delete(id); await saveQueue(); }
+      if (msg.type === 'images:zip') {
+        const t = await getTab(msg.tabId), ids = new Set(msg.ids || []);
+        const settings = D.effective(await getSettings(), t.page.url);
+        const items = [...t.items.values()].filter(i => ids.has(i.id) && i.kind === 'image' && !i.drm).slice(0, 200);
+        if (!items.length) throw new Error('Select at least one image');
+        const name = D.component(settings.folder) + '/' + D.component(D.site(t.page.url) || 'images') + '-collection.zip';
+        const job = newJob(msg.tabId, items[0], name, 'zip');
+        Object.assign(job, { bundleItems: items.map((item, index) => ({ ...item, filename: (index + 1) + '-' + buildFilename(item, settings, t.page.title, t.page.url).split('/').pop() })), page: t.page, settings, createdAt: Date.now() });
+        await saveQueue(); broadcastJobs(); pumpQueue();
+      }
+      return { ok: true, paused: queuePaused, records: [...jobs.values()].map(({ _resolve, ...j }) => j).reverse() };
+    })().then(sendResponse).catch(e => sendResponse({ ok: false, error: friendlyError(e) }));
     return true;
   }
   if (msg.type === 'scan') {
@@ -625,17 +726,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       .then(() => sendResponse({ ok: true })).catch(() => sendResponse({ ok: false }));
     return true;
   }
-  if (msg.type === 'job:cancel') {
-    const job = jobs.get(msg.jobId);
-    if (job) {
-      if (job.status === 'running') sendOffscreen({ type: 'job:cancel', jobId: job.id });
-      finishJob(job.id, 'canceled');
-    }
-    sendResponse({ ok: true });
-    return;
-  }
+  if (msg.type === 'job:cancel') { controlJob(msg.jobId, 'cancel').then(sendResponse).catch(e => sendResponse({ ok: false, error: friendlyError(e) })); return true; }
   if (msg.type === 'jobs:clear') {
-    for (const [id, j] of jobs) if (j.status !== 'running' && j.status !== 'queued') jobs.delete(id);
+    // Hide completed activity cards without deleting persistent download history.
+    for (const j of jobs.values()) if (['done', 'error', 'canceled'].includes(j.status)) j.hidden = true;
+    saveQueue();
     broadcastJobs();
     sendResponse({ ok: true });
     return;

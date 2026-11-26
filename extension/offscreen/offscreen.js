@@ -6,6 +6,8 @@
  * and joins video + audio with ffmpeg.wasm (stream copy, no quality loss).
  * Also used as a fallback for direct downloads that need the page's Referer.
  */
+import '../shared/download-tools.js';
+const D = globalThis.MHDownloadTools;
 import { FFmpeg } from '../vendor/ffmpeg/index.js';
 
 const CONCURRENCY = 6;
@@ -15,8 +17,9 @@ let ffmpeg = null;
 let ffmpegLoading = null;
 
 // ------------------------------------------------------------------ messaging
-chrome.runtime.onMessage.addListener((msg) => {
+chrome.runtime.onMessage.addListener((msg, sender, respond) => {
   if (!msg || msg.target !== 'offscreen') return;
+  if (msg.type === 'metadata') { const url = URL.createObjectURL(new Blob([JSON.stringify(msg.data, null, 2)], { type: 'application/json' })); respond({ url }); return; }
   if (msg.type === 'job:start') runJob(msg.job);
   else if (msg.type === 'job:cancel') {
     const c = running.get(msg.jobId);
@@ -46,6 +49,7 @@ async function runJob(job) {
     let result;
     if (job.mode === 'hls') result = await doHls(job, ctrl.signal, report);
     else if (job.mode === 'dash') result = await doDash(job, ctrl.signal, report);
+    else if (job.mode === 'zip') result = await doZip(job, ctrl.signal, report);
     else result = await doDirect(job, ctrl.signal, report);
     send({ type: 'job:result', jobId: job.id, files: result.files, warning: result.warning || '' });
   } catch (e) {
@@ -362,7 +366,7 @@ async function doHls(job, signal, report) {
     const { variants, audio } = parseMaster(text, job.url);
     if (!variants.length) throw new Error('No video qualities found');
     variants.sort((a, b) => (b.width * b.height - a.width * a.height) || (b.bandwidth - a.bandwidth));
-    const best = variants[0];
+    const best = D.choose(variants, job.quality);
     videoUrl = best.url;
     if (best.audio && audio[best.audio] && audio[best.audio].length) {
       const g = audio[best.audio];
@@ -470,7 +474,7 @@ function rangeAttr(r) {
   return { start: s, end: e };
 }
 
-function parseMpd(xml, manifestUrl) {
+function parseMpd(xml, manifestUrl, quality) {
   const doc = new DOMParser().parseFromString(xml, 'application/xml');
   const mpd = doc.documentElement;
   if (!mpd || mpd.localName !== 'MPD') throw new Error('Not a valid DASH manifest');
@@ -488,7 +492,7 @@ function parseMpd(xml, manifestUrl) {
     for (const p of periods) { const d = isoDuration(p.getAttribute('duration')) || 0; if (d > bestDur) { bestDur = d; period = p; } }
     periodDur = bestDur || total;
   }
-  let bestVideo = null; let bestAudio = null;
+  let bestVideo = null; let bestAudio = null; const videos = [];
   for (const as of childrenByName(period, 'AdaptationSet')) {
     const reps = childrenByName(as, 'Representation');
     for (const rep of reps) {
@@ -500,12 +504,13 @@ function parseMpd(xml, manifestUrl) {
         const w = +rep.getAttribute('width') || +as.getAttribute('width') || 0;
         const h = +rep.getAttribute('height') || +as.getAttribute('height') || 0;
         const score = w * h * 1e4 + bw / 1000;
-        if (!bestVideo || score > bestVideo.score) bestVideo = { rep, as, score, w, h, mime, codecs };
+        videos.push({ rep, as, score, w, h, width: w, height: h, bandwidth: bw, mime, codecs });
       } else if (ct === 'audio' || /^audio/.test(mime)) {
         if (!bestAudio || bw > bestAudio.bw) bestAudio = { rep, as, bw, mime, codecs };
       }
     }
   }
+  bestVideo = D.choose(videos, quality);
   if (!bestVideo) throw new Error('No video track in manifest');
   const v = segmentsFor(bestVideo.rep, bestVideo.as, period, mpdBase, periodDur);
   const a = bestAudio ? segmentsFor(bestAudio.rep, bestAudio.as, period, mpdBase, periodDur) : null;
@@ -536,7 +541,7 @@ async function doDash(job, signal, report) {
   const isInline = !!job.manifest;
   const xml = isInline ? job.manifest : await fetchText(job.url, signal);
   const base = isInline ? (job.pageUrl || 'https://example.invalid/') : job.url;
-  const { video, audio } = parseMpd(xml, base);
+  const { video, audio } = parseMpd(xml, base, job.quality);
   await allowHosts(job.id, [video.segs[0] && video.segs[0].url, audio && audio.segs[0] && audio.segs[0].url, isInline ? null : job.url].filter(Boolean));
   report(0.02, video.height ? `Best quality: ${video.height}p` : 'Downloading…', true);
   const state = { v: 0, a: audio ? 0 : 1 };
@@ -546,4 +551,20 @@ async function doDash(job, signal, report) {
     audio ? downloadDashTrack(audio, signal, (d, t) => { state.a = d / t; upd(); }) : Promise.resolve(null)
   ]);
   return finish(vt, at, report);
+}
+
+// Image collections use ZIP store mode: already-compressed images need no recompression.
+async function doZip(job, signal, report) {
+  const entries = []; let total = 0;
+  for (const [index, item] of job.items.entries()) {
+    if (signal.aborted) throw new Error('canceled');
+    const { bytes, type } = await fetchBytes(item.url, { signal });
+    if (!/^image\//i.test(type)) throw new Error('The server returned an unsupported image format. Reload the source page.');
+    total += bytes.length;
+    if (total > 256 * 1024 * 1024) throw new Error('Collection exceeds the 256 MB browser memory limit. Select fewer images.');
+    entries.push({ name: item.filename, bytes });
+    if (job.exportMetadata) entries.push({ name: item.filename + '.json', bytes: new TextEncoder().encode(JSON.stringify(D.metadata(item, job.page || {}), null, 2)) });
+    report((index + 1) / job.items.length, `Collecting image ${index + 1} of ${job.items.length}`, true);
+  }
+  return { files: [{ blobUrl: URL.createObjectURL(D.zip(entries)), ext: 'zip', last: true }] };
 }

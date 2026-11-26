@@ -41,7 +41,9 @@ function check(cond, msg) {
   await sleep(800);
   const userDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mh-profile-'));
   const dlDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mh-dl-'));
-  const ctx = await chromium.launchPersistentContext(userDir, {
+  let ctx;
+  try {
+  ctx = await chromium.launchPersistentContext(userDir, {
     channel: 'chromium',
     headless: true,
     acceptDownloads: true,
@@ -49,7 +51,6 @@ function check(cond, msg) {
     ignoreHTTPSErrors: true,
     args: [`--disable-extensions-except=${EXT}`, `--load-extension=${EXT}`, '--proxy-server=http://127.0.0.1:8899', '--ignore-certificate-errors']
   });
-  try {
     let [sw] = ctx.serviceWorkers();
     if (!sw) sw = await ctx.waitForEvent('serviceworker');
     const extId = sw.url().split('/')[2];
@@ -158,6 +159,44 @@ function check(cond, msg) {
     }
     const hd = complete.find((d) => /hero-1920/.test(d.filename));
     check(!!hd, 'HD srcset image downloaded');
+
+    // ---------- persistent history, duplicate checks, queue controls, image ZIP ----------
+    const history = await ui.evaluate(() => chrome.runtime.sendMessage({ type: 'history:list' }));
+    check(history.ok && history.records.filter(j => j.status === 'done').length >= 9, 'history records completed direct files and streams');
+    const imageId = items.find(i => i.url.endsWith('hero-1920.jpg')).id;
+    const duplicate = await ui.evaluate(({ tabId, imageId }) => chrome.runtime.sendMessage({ type: 'download', tabId, ids: [imageId] }), { tabId, imageId });
+    check(duplicate.results[0].duplicate === true, 'already downloaded media triggers a duplicate warning');
+    await ui.evaluate(() => chrome.runtime.sendMessage({ type: 'queue:pause', paused: true }));
+    const queued = await ui.evaluate(({ tabId, imageId }) => chrome.runtime.sendMessage({ type: 'download', tabId, ids: [imageId], options: { force: true } }), { tabId, imageId });
+    const queuedId = queued.results[0].jobId;
+    const pausedHistory = await ui.evaluate(() => chrome.runtime.sendMessage({ type: 'history:list' }));
+    check(pausedHistory.records.find(j => j.id === queuedId).status === 'queued', 'paused queue holds new jobs');
+    await ui.evaluate(jobId => chrome.runtime.sendMessage({ type: 'download:control', jobId, action: 'cancel' }), queuedId);
+    await ui.evaluate(() => chrome.runtime.sendMessage({ type: 'queue:pause', paused: false }));
+    await ui.locator('#historyBtn').click();
+    await ui.locator('#historySearch').fill('hero');
+    check(await ui.locator('.history-record').count() >= 1, 'history search renders matching download records');
+    await ui.locator('#historyClose').click();
+    await ui.evaluate(async () => {
+      const { settings = {} } = await chrome.storage.sync.get('settings');
+      await chrome.storage.sync.set({ settings: { ...settings, exportMetadata: true } });
+    });
+    await ui.evaluate(({ tabId, imageId }) => chrome.runtime.sendMessage({ type: 'images:zip', tabId, ids: [imageId] }), { tabId, imageId });
+    let zipped;
+    for (let i = 0; i < 30; i++) {
+      await sleep(1000);
+      zipped = await sw.evaluate(async () => (await chrome.downloads.search({})).find(d => /collection\.zip$/.test(self.__names[d.id] || '') && d.state === 'complete'));
+      if (zipped) break;
+    }
+    check(!!zipped, 'image collection ZIP saved');
+    if (zipped) {
+      execFileSync('python3', ['-c', 'import sys,zipfile,json; z=zipfile.ZipFile(sys.argv[1]); assert z.testzip() is None; names=z.namelist(); assert any(n.endswith(".jpg") for n in names); m=json.loads(z.read(next(n for n in names if n.endswith(".json")))); assert m["sourceUrl"].startswith("http://127.0.0.1:")', zipped.filename]);
+      check(true, 'ZIP includes valid image bytes and source metadata');
+    }
+    await ui.evaluate(async () => {
+      const { settings = {} } = await chrome.storage.sync.get('settings');
+      await chrome.storage.sync.set({ settings: { ...settings, exportMetadata: false } });
+    });
 
     // ---------- new page in the same tab starts a fresh list ----------
     await page.goto(`http://127.0.0.1:${PORT}/page2.html`);
@@ -287,7 +326,7 @@ function check(cond, msg) {
     console.error(e);
     process.exitCode = 1;
   } finally {
-    await ctx.close();
+    if (ctx) await ctx.close();
     server.kill();
     httpsServer.kill();
     proxy.kill();

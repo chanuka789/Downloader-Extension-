@@ -263,7 +263,7 @@
       if (!m) return null;
       return {
         kind: m.kind, url: m.url, width: m.width, height: m.height, thumb: m.thumb,
-        manifest: m.manifest || null, alt: m.alt,
+        manifest: m.manifest || null, alt: m.alt, creator: post.user || '', postId: post.code || post.pk || '', index: i + 1, caption: post.caption || m.alt || '',
         title: post.media.length > 1 ? `${name}_${i + 1}` : name
       };
     }).filter(Boolean);
@@ -293,6 +293,7 @@
         items = [{ ...m, title: ['instagram', t.code || t.pk].filter(Boolean).join('_') }];
       }
       const res = await send(items);
+      if (res?.duplicates) { toast(`${res.duplicates} file(s) already saved or queued. Open MediaHarbor History & queue to review duplicates, or change duplicate preferences in Settings.`); return; }
       if (res && res.ok) {
         markDone(btn);
         const streams = items.filter((i) => i.kind === 'dash').length;
@@ -316,6 +317,7 @@
     }
     const res = await send(items);
     busy = false;
+    if (res?.duplicates) { toast(`${res.count} files queued; ${res.duplicates} duplicates skipped. Review them in MediaHarbor History & queue.`); updateBar(); return; }
     if (res && res.ok) {
       toast(`Saving ${items.length} file${items.length === 1 ? '' : 's'} from ${list.length - missing} post${list.length - missing === 1 ? '' : 's'}` + (missing ? ` · ${missing} could not be loaded` : ''));
       selected.clear();
@@ -573,12 +575,12 @@
   }
 
   chrome.storage.sync.get('settings').then((s) => {
-    enabled = !(s && s.settings && s.settings.igButtons === false);
+    enabled = !(s && s.settings && (s.settings.sitePreferences?.[location.hostname.replace(/^www\./, '')]?.igButtons ?? s.settings.igButtons) === false);
     start();
   }).catch(start);
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area === 'sync' && changes.settings) {
-      enabled = !(changes.settings.newValue && changes.settings.newValue.igButtons === false);
+      enabled = !(changes.settings.newValue && (changes.settings.newValue.sitePreferences?.[location.hostname.replace(/^www\./, '')]?.igButtons ?? changes.settings.newValue.igButtons) === false);
       rebuildAll(); scheduleScan();
     }
   });

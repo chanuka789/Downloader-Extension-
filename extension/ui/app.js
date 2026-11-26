@@ -6,7 +6,8 @@
 
   const MODE = document.body.classList.contains('manager') ? 'manager' : 'popup';
   const params = new URLSearchParams(location.search);
-  const DEFAULTS = { folder: 'MediaHarbor', bySite: true, askWhere: false, theme: 'system', minSize: 0, hideSmall: true, view: 'grid', cover: false, igButtons: true };
+  const D = globalThis.MHDownloadTools;
+  const DEFAULTS = { ...D.defaults, folder: 'MediaHarbor', bySite: true, askWhere: false, theme: 'system', minSize: 0, hideSmall: true, view: 'grid', cover: false, igButtons: true };
   const BLOCKED_VIDEO = /(^|\.)(youtube\.com|youtu\.be|youtube-nocookie\.com|netflix\.com|disneyplus\.com|primevideo\.com|hulu\.com|max\.com|hbomax\.com|spotify\.com)$/i;
 
   // ------------------------------------------------------------------ icons
@@ -178,6 +179,7 @@
           <button class="icon-btn hide-sm" id="viewBtn" title="Switch grid / list" aria-label="Switch between grid and list view">${icon('list')}</button>
           ${MODE === 'popup' ? `<button class="icon-btn" id="expandBtn" title="Open full view" aria-label="Open full view in a tab">${icon('expand')}</button>` : ''}
           <button class="icon-btn hide-sm" id="themeBtn" title="Light / dark theme" aria-label="Toggle theme">${icon('moon')}</button>
+          <button class="icon-btn" id="historyBtn" title="History and queue" aria-label="History and queue">${icon('list')}</button>
           <button class="icon-btn" id="settingsBtn" title="Settings" aria-label="Settings">${icon('gear')}</button>
         </div>
       </header>
@@ -209,6 +211,12 @@
           </label>
         </div>
       </nav>
+      <div class="download-options">
+        <label for="downloadQuality">Download quality</label>
+        <select id="downloadQuality" class="select"><option value="best">Best available</option><option value="1080">Up to 1080p</option><option value="720">Up to 720p</option><option value="smallest">Smallest available</option></select>
+        <button class="btn ghost" id="zipBtn">Save images as ZIP</button>
+        <span class="hint">Quality choices apply to HLS/DASH streams. Direct files keep their source quality. Sizes appear when provided by the site.</span>
+      </div>
       <div class="selectrow">
         <label class="checkline"><input type="checkbox" class="cb" id="selAll"><span id="selLabel">Select all</span></label>
         <span id="hiddenInfo"></span>
@@ -245,20 +253,38 @@
         </div>
       </dialog>
 
+      <dialog id="history" class="bottom-sheet" aria-labelledby="historyTitle">
+        <section class="sheet"><div class="sheet-head"><h2 id="historyTitle">History &amp; queue</h2><button class="icon-btn" id="historyClose" aria-label="Close history">${icon('x')}</button></div>
+        <div class="sheet-body"><label for="historySearch">Search downloads</label><input id="historySearch" class="input" type="search" placeholder="File, website, or status">
+        <div class="history-tools"><button class="btn ghost" id="queuePause">Pause queue</button><button class="btn ghost" id="historyClear">Clear finished history</button></div>
+        <p class="hint">Queue pause stops new jobs. Direct files support pause/resume when the server permits it. Cancel and retry stream or ZIP jobs. Keeps the latest 500 finished records on this device; duplicate checks use exact media URLs and quality.</p>
+        <div id="historyRecords" role="list" aria-label="Download history"></div></div></section>
+      </dialog>
       <dialog id="settings" class="bottom-sheet" aria-labelledby="setTitle">
         <form class="sheet" method="dialog" id="setForm">
           <div class="sheet-head"><h2 id="setTitle">Settings</h2><button class="icon-btn" value="cancel" aria-label="Close">${icon('x')}</button></div>
           <div class="sheet-body">
+            <label class="checkline"><input type="checkbox" id="sSite"> Save download and overlay preferences for this website only</label>
+            <p class="hint" id="siteSettingsHost"></p>
+            <button type="button" class="linkbtn" id="siteReset">Use global defaults for this website</button>
+            <div class="field">
+              <label for="sTemplate">File naming pattern (optional)</label><input id="sTemplate" aria-describedby="templateHint" class="input" maxlength="240" placeholder="{creator}/{date}/{post-id}_{index}">
+              <p class="hint" id="templateHint">Tokens: {creator}, {date}, {post-id}, {index}, {title}, {site}, {name}. Extension is added automatically. Missing creator becomes “unknown”.</p>
+            </div>
+            <div class="field"><label for="sConcurrent">Simultaneous downloads (global)</label><input id="sConcurrent" class="input" type="number" min="1" max="6" value="3"></div>
+            <div class="field"><label for="sDuplicate">Previously downloaded files</label><select class="select" id="sDuplicate"><option value="warn">Warn before saving again</option><option value="skip">Skip duplicates</option><option value="allow">Always save</option></select></div>
+            <label class="checkline"><input type="checkbox" id="sMetadata"> Save source information as JSON beside files (inside ZIP collections)</label>
+            <p class="hint">Includes source URL, available creator/caption, and download date. History and exports can contain private media URLs.</p>
             <div class="field">
               <label for="sFolder">Download folder</label>
               <input class="input" id="sFolder" maxlength="60" placeholder="MediaHarbor">
               <p class="hint">Files are saved in your Downloads folder, inside this folder.</p>
             </div>
-            <div class="switch-row"><div class="txt"><strong>Sort into folders by website</strong><span>Example: MediaHarbor/instagram.com/photo.jpg</span></div><input type="checkbox" class="switch" id="sBySite"></div>
-            <div class="switch-row"><div class="txt"><strong>Ask where to save</strong><span>Only for single downloads</span></div><input type="checkbox" class="switch" id="sAsk"></div>
-            <div class="switch-row"><div class="txt"><strong>Hide icons and tiny images</strong><span>Hides images smaller than 120 px</span></div><input type="checkbox" class="switch" id="sHideSmall"></div>
-            <div class="switch-row"><div class="txt"><strong>Download buttons on Instagram</strong><span>On every post, reel, story and grid photo</span></div><input type="checkbox" class="switch" id="sIg"></div>
-            <div class="switch-row"><div class="txt"><strong>Crop thumbnails to fill</strong><span>Off shows the whole picture</span></div><input type="checkbox" class="switch" id="sCover"></div>
+            <div class="switch-row"><div class="txt"><strong>Sort into folders by website</strong><span>Example: MediaHarbor/instagram.com/photo.jpg</span></div><input type="checkbox" class="switch" aria-label="Sort into folders by website" id="sBySite"></div>
+            <div class="switch-row"><div class="txt"><strong>Ask where to save</strong><span>Only for single downloads</span></div><input type="checkbox" class="switch" aria-label="Ask where to save" id="sAsk"></div>
+            <div class="switch-row"><div class="txt"><strong>Hide icons and tiny images</strong><span>Hides images smaller than 120 px</span></div><input type="checkbox" class="switch" aria-label="Hide icons and tiny images" id="sHideSmall"></div>
+            <div class="switch-row"><div class="txt"><strong>Download buttons on Instagram</strong><span>On every post, reel, story and grid photo</span></div><input type="checkbox" class="switch" aria-label="Download buttons on Instagram" id="sIg"></div>
+            <div class="switch-row"><div class="txt"><strong>Crop thumbnails to fill</strong><span>Off shows the whole picture</span></div><input type="checkbox" class="switch" aria-label="Crop thumbnails to fill" id="sCover"></div>
             <div class="field">
               <span class="lbl">Theme</span>
               <div class="seg-mini" id="sTheme">
@@ -276,7 +302,7 @@
         </form>
       </dialog>`;
 
-    for (const id of ['fav', 'pageHost', 'scanBtn', 'scrollBtn', 'viewBtn', 'expandBtn', 'themeBtn', 'settingsBtn', 'notice', 'cAll', 'cImg', 'cVid', 'query', 'sort', 'minSize', 'selAll', 'selLabel', 'hiddenInfo', 'content', 'grid', 'empty', 'jobs', 'summary', 'clearSel', 'dlBtn', 'toast', 'lightbox', 'lbTitle', 'lbSub', 'lbStage', 'lbOpen', 'lbCopy', 'lbClose', 'lbPrev', 'lbNext', 'lbUrl', 'lbDl', 'settings', 'setForm']) {
+    for (const id of ['fav', 'pageHost', 'scanBtn', 'scrollBtn', 'viewBtn', 'expandBtn', 'themeBtn', 'settingsBtn', 'notice', 'cAll', 'cImg', 'cVid', 'query', 'sort', 'minSize', 'selAll', 'selLabel', 'hiddenInfo', 'content', 'grid', 'empty', 'jobs', 'summary', 'clearSel', 'dlBtn', 'toast', 'lightbox', 'lbTitle', 'lbSub', 'lbStage', 'lbOpen', 'lbCopy', 'lbClose', 'lbPrev', 'lbNext', 'lbUrl', 'lbDl', 'settings', 'setForm', 'historyBtn', 'downloadQuality', 'zipBtn', 'history', 'historyClose', 'historySearch', 'historyRecords', 'queuePause', 'historyClear']) {
       els[id] = document.getElementById(id);
     }
     els.app = app;
@@ -306,6 +332,7 @@
         if (msg.favicon) state.favicon = msg.favicon;
         if (msg.tabExists === false) state.tabExists = false;
         if (!state.loaded) { state.loaded = true; setTimeout(() => { state.firstScanDone = true; render(); }, 1200); }
+        els.downloadQuality.value = D.effective(state.settings, state.page.url).quality;
         updateHeader();
         render();
         break;
@@ -404,7 +431,7 @@
     const { list, counts, hiddenSmall } = computeVisible();
     state.visible = list;
     els.cAll.textContent = counts.all; els.cImg.textContent = counts.image; els.cVid.textContent = counts.video;
-    for (const b of els.app.querySelectorAll('.segmented button')) b.setAttribute('aria-selected', String(b.dataset.filter === state.filter));
+    for (const b of els.app.querySelectorAll('.segmented button')) { b.setAttribute('aria-selected', String(b.dataset.filter === state.filter)); b.tabIndex = b.dataset.filter === state.filter ? 0 : -1; }
     els.grid.classList.toggle('list', state.settings.view === 'list');
     els.viewBtn.innerHTML = icon(state.settings.view === 'list' ? 'grid' : 'list');
     els.hiddenInfo.textContent = hiddenSmall ? `${hiddenSmall} small icon${hiddenSmall > 1 ? 's' : ''} hidden` : '';
@@ -681,12 +708,21 @@
   async function download(ids) {
     const list = ids.map((id) => state.items.get(id)).filter((i) => i && !i.drm && !i.live);
     if (!list.length) return;
-    if (list.length > 40 && !confirm(`Download ${list.length} files? They will be saved one after another.`)) return;
+    if (list.length > 40 && !confirm(`Queue ${list.length} files? The simultaneous download limit applies.`)) return;
     for (const i of list) { state.statuses[i.id] = 'queued'; updateCardStatus(i.id); }
-    const res = await send({ type: 'download', tabId: state.tabId, ids: list.map((i) => i.id) });
+    const options = { quality: els.downloadQuality.value };
+    const res = await send({ type: 'download', tabId: state.tabId, ids: list.map((i) => i.id), options });
+    if (!res?.ok) { toast(res?.error || 'Could not queue downloads'); return; }
+    const duplicates = (res.results || []).filter(r => r.duplicate);
+    for (const r of duplicates) { state.statuses[r.id] = ''; updateCardStatus(r.id); }
+    const warn = duplicates.filter(r => !r.skipped);
+    if (warn.length && confirm(`${warn.length} file(s) are already queued or in your download history. Save them again?`)) {
+      await send({ type: 'download', tabId: state.tabId, ids: warn.map(r => r.id), options: { ...options, force: true } });
+    }
+    if (duplicates.length) { toast(`${duplicates.length} duplicate file(s) checked. Open History & queue for details.`); return; }
     const streams = list.filter((i) => i.kind === 'hls' || i.kind === 'dash').length;
     if (!res) toast('Could not start the download. Please try again.');
-    else if (streams) toast(streams === 1 && list.length === 1 ? 'Preparing the video in best quality…' : `Started ${list.length} downloads (${streams} need processing)`);
+    else if (streams) toast(streams === 1 && list.length === 1 ? 'Preparing the video in the selected quality…' : `Started ${list.length} downloads (${streams} need processing)`);
     else toast(list.length === 1 ? 'Download started' : `${list.length} downloads started`);
   }
 
@@ -730,7 +766,7 @@
     if (!jobs.length) { els.jobs.hidden = true; return; }
     els.jobs.hidden = false;
     const active = jobs.filter((j) => j.status === 'running' || j.status === 'queued').length;
-    els.jobs.innerHTML = `<div class="jobs-head"><span>${active ? `Processing ${active} video${active > 1 ? 's' : ''}` : 'Finished'}</span>${active < jobs.length ? '<button class="linkbtn" id="jobsClear">Clear finished</button>' : ''}</div>` +
+    els.jobs.innerHTML = `<div class="jobs-head"><span>${active ? `Processing ${active} download${active > 1 ? 's' : ''}` : 'Finished'}</span>${active < jobs.length ? '<button class="linkbtn" id="jobsClear">Clear finished</button>' : ''}</div>` +
       jobs.slice().reverse().map((j) => `
         <div class="job ${j.status === 'done' ? 'done' : j.status === 'error' ? 'error' : ''}" data-job="${esc(j.id)}">
           <div class="jt" title="${esc(j.title)}">${esc(j.title)}</div>
@@ -745,6 +781,25 @@
     if (!active && jobs.every((j) => j.status === 'done' || j.status === 'canceled')) {
       renderJobs._t = setTimeout(() => send({ type: 'jobs:clear' }), 6000);
     }
+  }
+
+  async function refreshHistory() {
+    const result = await send({ type: 'history:list' });
+    if (!result?.ok) { toast(result?.error || 'Could not load history'); return; }
+    els.queuePause.dataset.paused = String(result.paused);
+    els.queuePause.textContent = result.paused ? 'Resume queue' : 'Pause queue';
+    els.queuePause.setAttribute('aria-pressed', String(result.paused));
+    const query = els.historySearch.value.toLowerCase();
+    const records = result.records.filter(j => `${j.filename} ${j.page?.url} ${j.status} ${j.error}`.toLowerCase().includes(query));
+    els.historyRecords.innerHTML = records.length ? records.map(j => {
+      const actions = [];
+      if (j.status === 'running' && j.mode === 'native') actions.push('pause');
+      if (j.status === 'paused') actions.push('resume');
+      if (['running', 'paused', 'queued'].includes(j.status)) actions.push('cancel');
+      if (['error', 'canceled'].includes(j.status)) actions.push('retry');
+      const source = /^https?:/.test(j.page?.url || '') ? `<a href="${esc(j.page.url)}" target="_blank" rel="noopener noreferrer">Open source page</a>` : '';
+      return `<article role="listitem" class="history-record"><strong>${esc(j.filename)}</strong><p>${esc(j.status)} · ${esc(new Date(j.createdAt || 0).toLocaleString())}</p>${j.error ? `<p class="history-error">${esc(j.error)}</p>` : ''}${j.warning ? `<p>${esc(j.warning)}</p>` : ''}${source}<div class="history-tools">${actions.map(a => `<button class="btn ghost" data-action="${a}" data-id="${esc(j.id)}">${a[0].toUpperCase() + a.slice(1)}</button>`).join('')}</div></article>`;
+    }).join('') : '<p>No downloads match your search.</p>';
   }
 
   // ------------------------------------------------------------------ lightbox
@@ -797,7 +852,14 @@
 
   // ------------------------------------------------------------------ settings dialog
   function openSettings() {
-    const s = state.settings;
+    const s = D.effective(state.settings, state.page.url);
+    $('#sSite').checked = !!state.settings.sitePreferences?.[D.site(state.page.url)];
+    $('#sSite').disabled = !D.site(state.page.url);
+    $('#siteSettingsHost').textContent = D.site(state.page.url) || 'Open a website to save site preferences.';
+    $('#sTemplate').value = s.filenameTemplate;
+    $('#sConcurrent').value = state.settings.maxConcurrent;
+    $('#sDuplicate').value = s.duplicatePolicy;
+    $('#sMetadata').checked = !!s.exportMetadata;
     $('#sFolder').value = s.folder;
     $('#sBySite').checked = !!s.bySite;
     $('#sAsk').checked = !!s.askWhere;
@@ -805,11 +867,37 @@
     $('#sCover').checked = !!s.cover;
     $('#sIg').checked = s.igButtons !== false;
     for (const b of document.querySelectorAll('#sTheme button')) b.setAttribute('aria-pressed', String(b.dataset.v === s.theme));
-    els.settings.showModal();
+    els.settings.querySelector('.sheet').scrollTop = 0;
+    els.settings.returnValue = '';
+    if (!els.settings.open) els.settings.showModal();
   }
 
   // ------------------------------------------------------------------ events
   function bindEvents() {
+    els.historyBtn.onclick = async () => { await refreshHistory(); els.history.showModal(); };
+    els.historyClose.onclick = () => els.history.close();
+    els.historySearch.oninput = refreshHistory;
+    els.historyClear.onclick = async () => { if (confirm('Clear finished history? Duplicate detection uses this history. Downloaded files will stay on disk.')) { await send({ type: 'history:clear' }); refreshHistory(); } };
+    els.queuePause.onclick = async () => { await send({ type: 'queue:pause', paused: els.queuePause.dataset.paused !== 'true' }); refreshHistory(); };
+    els.historyRecords.onclick = async e => {
+      const button = e.target.closest('[data-action]'); if (!button) return;
+      const result = await send({ type: 'download:control', jobId: button.dataset.id, action: button.dataset.action });
+      if (!result?.ok) toast(result?.error || 'Could not update download');
+      refreshHistory();
+    };
+    chrome.storage.onChanged.addListener((changes, area) => { if (area === 'local' && changes.downloadHistory && els.history.open) refreshHistory(); });
+    els.downloadQuality.onchange = () => toast('Quality selected for the next download');
+    els.zipBtn.onclick = async () => {
+      const ids = (state.selected.size ? [...state.selected] : state.visible.map(i => i.id)).filter(id => state.items.get(id)?.kind === 'image');
+      if (!ids.length) { toast('Select images to create a ZIP'); return; }
+      if (ids.length > 200) { toast('Choose 200 images or fewer per ZIP'); return; }
+      const result = await send({ type: 'images:zip', tabId: state.tabId, ids });
+      toast(result?.ok ? 'Image collection queued' : result?.error || 'Could not create ZIP');
+    };
+    $('#siteReset').onclick = () => {
+      delete state.settings.sitePreferences[D.site(state.page.url)]; saveSettings(); openSettings();
+      els.downloadQuality.value = state.settings.quality; toast('Global defaults restored for this site');
+    };
     els.scanBtn.onclick = () => rescan(true);
     els.scrollBtn.onclick = toggleAutoScroll;
     els.viewBtn.onclick = () => { state.settings.view = state.settings.view === 'list' ? 'grid' : 'list'; saveSettings(); render(); };
@@ -817,6 +905,13 @@
     els.themeBtn.onclick = () => { state.settings.theme = isDark() ? 'light' : 'dark'; saveSettings(); applyTheme(); };
     els.settingsBtn.onclick = openSettings;
     for (const b of els.app.querySelectorAll('.segmented button')) b.onclick = () => { state.filter = b.dataset.filter; render(); els.content.scrollTop = 0; };
+    const filterTabs = [...els.app.querySelectorAll('.segmented button')];
+    filterTabs.forEach((b, index) => b.addEventListener('keydown', e => {
+      if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
+      e.preventDefault();
+      const next = e.key === 'Home' ? 0 : e.key === 'End' ? filterTabs.length - 1 : (index + (e.key === 'ArrowRight' ? 1 : -1) + filterTabs.length) % filterTabs.length;
+      filterTabs[next].click(); filterTabs[next].focus();
+    }));
     els.sort.onchange = () => { state.sort = els.sort.value; render(); };
     els.minSize.value = String(state.minSize);
     if (!els.minSize.value) els.minSize.value = '0';
@@ -912,7 +1007,12 @@
     for (const b of document.querySelectorAll('#sTheme button')) b.onclick = () => { for (const o of document.querySelectorAll('#sTheme button')) o.setAttribute('aria-pressed', String(o === b)); };
     els.settings.addEventListener('close', () => {
       if (els.settings.returnValue !== 'save') return;
-      const s = state.settings;
+      const s = { ...state.settings };
+      s.filenameTemplate = $('#sTemplate').value.trim();
+      s.duplicatePolicy = $('#sDuplicate').value;
+      s.exportMetadata = $('#sMetadata').checked;
+      s.quality = els.downloadQuality.value;
+      const concurrency = Math.max(1, Math.min(6, +$('#sConcurrent').value || 3));
       s.folder = ($('#sFolder').value || '').trim().replace(/[\\/:*?"<>|]+/g, ' ').trim() || 'MediaHarbor';
       s.bySite = $('#sBySite').checked;
       s.askWhere = $('#sAsk').checked;
@@ -921,6 +1021,16 @@
       s.igButtons = $('#sIg').checked;
       const t = document.querySelector('#sTheme button[aria-pressed="true"]');
       s.theme = t ? t.dataset.v : 'system';
+      const siteKeys = ['folder', 'bySite', 'askWhere', 'filenameTemplate', 'duplicatePolicy', 'exportMetadata', 'quality', 'igButtons'];
+      if ($('#sSite').checked) {
+        const pref = Object.fromEntries(siteKeys.map(k => [k, s[k]]));
+        state.settings.sitePreferences = { ...state.settings.sitePreferences, [D.site(state.page.url)]: pref };
+        for (const k of ['theme', 'hideSmall', 'cover']) state.settings[k] = s[k];
+      } else {
+        Object.assign(state.settings, s);
+        delete state.settings.sitePreferences[D.site(state.page.url)];
+      }
+      state.settings.maxConcurrent = concurrency;
       saveSettings(); applyTheme(); render();
       toast('Settings saved');
     });

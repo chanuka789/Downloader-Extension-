@@ -366,3 +366,19 @@ body.manager .page-line { font-size: 13px; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; }
 }
+
+.download-options { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 8px 16px; border-bottom: 1px solid var(--border); }
+.download-options .hint { flex-basis: 100%; margin: 0; font-size: 12px; }
+.history-tools { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+.history-record { padding: 14px 0; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
+.history-record p { font-size: 13px; margin: 6px 0; }
+.history-error { color: var(--danger, #b42318); }
+.history-record a { color: var(--accent, #5959d6); text-decoration: underline; }
+#history .sheet { width: min(680px, 96vw); }
+#historySearch { width: 100%; }
+:focus-visible { outline: 3px solid var(--accent, #5959d6); outline-offset: 3px; }
+.switch-row input { flex-shrink: 0; }
+@media (max-width: 600px) { .download-options { padding: 8px 12px; } .download-options .select { max-width: 180px; } .download-options .btn { padding: 8px; } }
+
+.sheet-head { position: sticky; top: 0; background: var(--surface); z-index: 2; border-radius: 18px 18px 0 0; }
+.sheet-foot { position: sticky; bottom: 0; background: var(--surface); border-top: 1px solid var(--border); z-index: 2; }

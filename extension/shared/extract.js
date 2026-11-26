@@ -98,7 +98,8 @@
     return t || undefined;
   }
 
-  function handleObject(o, push) {
+  function handleObject(o, emit) {
+    const push = item => emit({ creator: o.user?.username || o.owner?.username || o.author?.name || '', caption: typeof o.caption === 'string' ? o.caption : o.caption?.text || o.description || '', postId: String(o.code || o.shortcode || o.id || o.pk || ''), ...item });
     // ---------- Instagram / Threads (private API) ----------
     let igThumb;
     if (o.image_versions2 && Array.isArray(o.image_versions2.candidates)) {
@@ -280,6 +281,7 @@
           out.push({
             code: typeof code === 'string' ? code : '',
             pk: pk ? String(pk) : '',
+            caption: typeof o.caption === 'string' ? o.caption : o.caption?.text || o.edge_media_to_caption?.edges?.[0]?.node?.text || '',
             user: (o.user && o.user.username) || (o.owner && o.owner.username) || '',
             media
           });
