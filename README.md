@@ -32,7 +32,7 @@ Save images and videos **in the best available quality** from Instagram, Faceboo
 
 ## Install (developer mode, 2 minutes)
 
-1. Download `MediaHarbor-v1.1.0.zip` and **unzip** it into a folder you will keep.
+1. Download `MediaHarbor-v1.2.0.zip` and **unzip** it into a folder you will keep.
    Or clone this repository and use the `extension/` folder.
 2. Open Chrome and go to `chrome://extensions`.
 3. Switch on **Developer mode** (top-right corner).

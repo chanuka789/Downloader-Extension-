@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "MediaHarbor – Image & Video Downloader",
   "short_name": "MediaHarbor",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Find and save images and videos in the best available quality from Instagram, Facebook, X, TikTok and almost any website.",
   "minimum_chrome_version": "116",
   "icons": {
