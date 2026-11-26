@@ -382,3 +382,34 @@ body.manager .page-line { font-size: 13px; }
 
 .sheet-head { position: sticky; top: 0; background: var(--surface); z-index: 2; border-radius: 18px 18px 0 0; }
 .sheet-foot { position: sticky; bottom: 0; background: var(--surface); border-top: 1px solid var(--border); z-index: 2; }
+
+/* ---------- collections ---------- */
+#collectionsDialog .sheet { width: min(720px, 100vw); }
+#collectionsDialog .sheet-body { padding-bottom: 18px; }
+#collectionStatus { font-size: 13px; margin: 8px 0; }
+#collectionStatus:empty { margin: 0; }
+.collection-form { display: flex; align-items: end; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+.collection-form .field { flex: 1 1 185px; min-width: 0; margin: 0; }
+#collectionChoice { width: 100%; max-width: none; }
+.collection-item {
+  display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 12px;
+  padding: 12px 0; border-top: 1px solid var(--border);
+}
+.collection-preview {
+  position: relative; display: grid; place-items: center; align-self: start;
+  aspect-ratio: 1; border-radius: 10px; overflow: hidden;
+  background: var(--surface-2); color: var(--muted); font-size: 12px;
+}
+.collection-preview img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.collection-details { min-width: 0; overflow-wrap: anywhere; }
+.collection-links, .collection-note { display: flex; flex-wrap: wrap; align-items: start; gap: 6px 12px; }
+.collection-links { margin: 6px 0; font-size: 13px; }
+.collection-links a { color: var(--accent); text-decoration: underline; }
+.collection-note .field { width: 100%; margin: 4px 0 0; }
+.collection-note textarea { height: auto; min-height: 52px; padding: 8px 10px; resize: vertical; }
+
+@media (max-width: 600px) {
+  body.manager .actionbar:has(#collectSelection:not([hidden])) { flex-wrap: wrap; gap: 6px; }
+  body.manager .actionbar:has(#collectSelection:not([hidden])) .summary { flex-basis: 100%; }
+  .collection-item { grid-template-columns: 66px minmax(0, 1fr); }
+}

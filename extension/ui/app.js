@@ -32,6 +32,7 @@
     stop: '<rect x="6" y="6" width="12" height="12" rx="2"/>',
     grid: '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
     list: '<path d="M8 6h13M8 12h13M8 18h13"/><circle cx="3.5" cy="6" r="1"/><circle cx="3.5" cy="12" r="1"/><circle cx="3.5" cy="18" r="1"/>',
+    bookmark: '<path d="M6 5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v16l-6-4-6 4Z"/>',
     search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
     left: '<path d="m15 18-6-6 6-6"/>',
     right: '<path d="m9 18 6-6-6-6"/>',
@@ -180,6 +181,7 @@
           ${MODE === 'popup' ? `<button class="icon-btn" id="expandBtn" title="Open full view" aria-label="Open full view in a tab">${icon('expand')}</button>` : ''}
           <button class="icon-btn hide-sm" id="themeBtn" title="Light / dark theme" aria-label="Toggle theme">${icon('moon')}</button>
           <button class="icon-btn" id="historyBtn" title="History and queue" aria-label="History and queue">${icon('list')}</button>
+          ${MODE === 'manager' ? `<button class="icon-btn" id="collectionsBtn" title="Collections" aria-label="Collections">${icon('bookmark')}</button>` : ''}
           <button class="icon-btn" id="settingsBtn" title="Settings" aria-label="Settings">${icon('gear')}</button>
         </div>
       </header>
@@ -231,6 +233,7 @@
       <footer class="actionbar">
         <div class="summary" id="summary"><strong>Scanning…</strong></div>
         <button class="btn ghost" id="clearSel" hidden>Clear</button>
+        ${MODE === 'manager' ? `<button class="btn ghost" id="collectSelection" hidden>${icon('bookmark')}<span>Add to collection</span></button>` : ''}
         <button class="btn primary" id="dlBtn" disabled>${icon('download')}<span>Download all</span></button>
       </footer>
       <div class="toast" id="toast" role="status" aria-live="polite"></div>
@@ -306,6 +309,7 @@
       els[id] = document.getElementById(id);
     }
     els.app = app;
+    els.collectSelection = $('#collectSelection');
     showSkeleton();
   }
 
@@ -490,6 +494,7 @@
     els.selLabel.textContent = n ? `${n} selected` : 'Select all';
     els.app.classList.toggle('selecting', n > 0);
     els.clearSel.hidden = !n;
+    if (els.collectSelection) els.collectSelection.hidden = !n;
     const target = n ? [...state.selected].map((id) => state.items.get(id)).filter(Boolean) : vis.filter((i) => !i.drm && !i.live);
     const bytes = target.reduce((s, i) => s + (i.size || 0), 0);
     const imgs = target.filter((i) => i.kind === 'image').length;
@@ -874,6 +879,14 @@
 
   // ------------------------------------------------------------------ events
   function bindEvents() {
+    if (MODE === 'manager') {
+      const collections = globalThis.MHCollections.mount(els.app, displayName);
+      $('#collectionsBtn').onclick = () => collections.open();
+      els.collectSelection.onclick = () => {
+        const items = [...state.selected].map(id => state.items.get(id)).filter(Boolean);
+        if (items.length) collections.open(items, state.page.url);
+      };
+    }
     els.historyBtn.onclick = async () => { await refreshHistory(); els.history.showModal(); };
     els.historyClose.onclick = () => els.history.close();
     els.historySearch.oninput = refreshHistory;
@@ -965,6 +978,7 @@
       }
     });
     document.addEventListener('keydown', (e) => {
+      if ($('#collectionsDialog')?.open) return;
       if (els.lightbox.open) {
         if (e.key === 'ArrowRight' && lbIndex < state.visible.length - 1) { lbIndex++; fillLightbox(); }
         if (e.key === 'ArrowLeft' && lbIndex > 0) { lbIndex--; fillLightbox(); }
