@@ -119,6 +119,31 @@ function check(cond, msg) {
     check(cardCount >= 9, `UI shows the media cards (${cardCount})`);
     check(!items.some((i) => i.url.endsWith('icon.png')), 'tiny 16px icon is ignored');
 
+    // Collections save bookmarks and notes across manager reloads.
+    const collection = ui.getByRole('dialog', { name: /collection/i });
+    const collectionName = collection.getByLabel('New collection name');
+    const firstCheckbox = ui.locator('.card input.cb').first();
+    await firstCheckbox.check();
+    await ui.getByRole('button', { name: 'Add to collection' }).click();
+    await collectionName.fill('References');
+    await collection.getByRole('button', { name: 'Create and add' }).click();
+    await collection.getByText('Added 1 bookmark.').waitFor();
+    check(await collection.getByRole('link', { name: 'Open source page' }).getAttribute('href') === page.url(), 'bookmark links to the source page');
+    await collection.getByRole('textbox', { name: /^Note for / }).fill('Review this later.');
+    await collection.getByRole('button', { name: 'Save note' }).click();
+    await collection.getByText('Note saved.').waitFor();
+    await collection.getByRole('button', { name: 'Close', exact: true }).click();
+    await ui.getByRole('button', { name: 'Add to collection' }).click();
+    await collection.getByRole('button', { name: 'Add 1 bookmark', exact: true }).click();
+    await collection.getByText('These bookmarks are already in this collection.').waitFor();
+    await ui.reload();
+    await ui.getByRole('button', { name: 'Collections', exact: true }).click();
+    check(await collection.getByRole('textbox', { name: /^Note for / }).inputValue() === 'Review this later.', 'collection and note persist through a manager reload');
+    await collection.getByRole('button', { name: 'Remove', exact: true }).click();
+    await collection.getByText('Bookmark removed.').waitFor();
+    check(await collection.getByText(/This collection is empty/).isVisible(), 'removing a bookmark shows the empty collection');
+    await collection.getByRole('button', { name: 'Close', exact: true }).click();
+
     // lightbox opens
     await ui.locator('.card .preview').first().click();
     await sleep(500);

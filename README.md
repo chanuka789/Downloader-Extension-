@@ -49,6 +49,10 @@ It also works in other Chromium browsers that support Chrome extensions (Edge, B
 4. On feeds (Instagram, Pinterest…), press the **mouse icon (Load more)** to scroll the page automatically and find more posts.
 5. Click the **open-in-tab icon** for the big manager view.
 
+## Collections
+
+In the full-page manager, select images or videos and click **Add to collection**. Choose an existing collection or enter a name to create one. Open **Collections** from the toolbar to add notes, remove bookmarks, or reopen the source page. Collections stay in this browser and store links and notes. The media URL can expire, so use the source link to find it again.
+
 ## Download management
 
 - **History & queue** (list icon in the toolbar): search downloads across tabs, reopen the source page, retry failures, cancel jobs, pause/resume direct downloads, or pause the queue before more jobs start. History stays on this device and keeps up to 500 finished records, plus active jobs. Clear finished history without deleting downloaded files.
@@ -77,7 +81,7 @@ Queued jobs and history persist through service-worker restarts. Native download
 
 ## Privacy
 
-MediaHarbor has no servers, no analytics and no tracking. Everything happens in your browser. It only contacts the websites you visit, to download the files you choose.
+MediaHarbor has no servers, no analytics and no tracking. Downloads and previews load from their original websites. Collection bookmarks and notes stay in your browser.
 
 ## Development
 
